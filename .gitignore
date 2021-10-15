@@ -1,3 +1,4 @@
 npshell
 # bin/
 *.html
+*sh
