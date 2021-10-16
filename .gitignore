@@ -2,3 +2,4 @@ npshell
 # bin/
 *.html
 *sh
+.vscode

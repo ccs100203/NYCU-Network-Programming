@@ -1,5 +1,6 @@
 #include "npshell.h"
 
+/* Built-in Commands */
 void built_in(char flag, struct built_in_arg args)
 {
     char *buf;
@@ -24,6 +25,9 @@ void built_in(char flag, struct built_in_arg args)
         break;
     }
 }
+
+/* Execution of commands */
+void exec_cmd() {}
 
 int main(int argc, char **argv)
 {
@@ -53,57 +57,91 @@ int main(int argc, char **argv)
         // printf("read: %s", read_buf);
 
         /* extract a command*/
-        char command[266] = "";
-        size_t index = 0;
-        bool isPipe = false;
-        for (size_t isEnd = false, i = 0; index < read_len && !isPipe && !isEnd;
-             index++, i++) {
-            switch (read_buf[index]) {
-            case '|':
-                isPipe = true;
-                break;
-            case '\n':
-                // printf("read_len: %ld, %ld\n", read_len, index);
-                isEnd = true;
-                break;
-            default:
-                command[i] = read_buf[index];
-                break;
-            }
-        }
-
-        /* check and execute a command*/
-        // printf("command: %s\n", command);
-        char *cmd_token = 0;
-        if (command[0] != '\0') {
-            // printf("command: %s\n", command);
-            cmd_token = strtok(command, " ");
-
-            if (strncmp(cmd_token, "setenv", strlen("setenv")) == 0) {
-                struct built_in_arg arg = {"", ""};
-                cmd_token = strtok(NULL, " ");
-                strncpy(arg.name, cmd_token, strlen(cmd_token));
-                cmd_token = strtok(NULL, " ");
-                strncpy(arg.value, cmd_token, strlen(cmd_token));
-                built_in('s', arg);
-            } else if (strncmp(cmd_token, "printenv", strlen("printenv")) ==
-                       0) {
-                struct built_in_arg arg = {"", ""};
-                cmd_token = strtok(NULL, " ");
-                strncpy(arg.name, cmd_token, strlen(cmd_token));
-                built_in('p', arg);
-            } else if (strncmp(cmd_token, "exit", strlen("exit")) == 0) {
-                struct built_in_arg arg = {"", ""};
-                built_in('e', arg);
-            }
-        }
-
-
-
-        // if (tmp == EOF) {
-        //     printf("EOF\n");
+        // size_t index = 0;  // index for read_buf
+        // for (size_t isEnd = false, i = 0; index < read_len && !isPipe &&
+        // !isEnd;
+        //      index++, i++) {
+        //     switch (read_buf[index]) {
+        //     case '|':
+        //         isPipe = true;
+        //         break;
+        //     case '\n':
+        //         // printf("read_len: %ld, %ld\n", read_len, index);
+        //         isEnd = true;
+        //         break;
+        //     default:
+        //         command[i] = read_buf[index];
+        //         break;
+        //     }
         // }
-        fflush(stdout);
+        char *read_token; /* record readline token for split */
+        char *read_rest = read_buf;
+        /* loop for each command*/
+        while (read_rest[0] != '\0') {
+            char command[266] = "";
+            bool isPipe = false;
+            bool isFileRedirect = false;
+            bool isNumPipe = false;
+            size_t numPipeLen = 0;
+
+            /* extract a command*/
+            while ((read_token = strtok_r(read_rest, " \n", &read_rest)) !=
+                   NULL) {
+                if (strncmp(read_token, "|", strlen(read_token)) == 0) {
+                    isPipe = true;
+                    break;
+                } else if (strncmp(read_token, ">", strlen(">")) == 0) {
+                    isFileRedirect = true;
+                    break;
+                } else if (read_token[0] == '|') {
+                    numPipeLen = strtol(read_token + 1, NULL, 10);
+                    if (errno != 0) {
+                        perror("strtol");
+                        exit(EXIT_FAILURE);
+                    }
+                    break;
+                } else {
+                    strncat(command, read_token, strlen(read_token));
+                    strcat(command, " ");
+                }
+            }
+            // printf("command: %s\n", command);
+
+
+            /* check and execute a command*/
+            char *cmd_token = 0; /* record command token for split */
+            char *cmd_rest = command;
+            if (command[0] != '\0') {
+                cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
+
+                /* built-in command */
+                if (strncmp(cmd_token, "setenv", strlen("setenv")) == 0) {
+                    struct built_in_arg arg = {"", ""};
+                    cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
+                    strncpy(arg.name, cmd_token, strlen(cmd_token));
+                    cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
+                    strncpy(arg.value, cmd_token, strlen(cmd_token));
+                    built_in('s', arg);
+                } else if (strncmp(cmd_token, "printenv", strlen("printenv")) ==
+                           0) {
+                    struct built_in_arg arg = {"", ""};
+                    cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
+                    strncpy(arg.name, cmd_token, strlen(cmd_token));
+                    built_in('p', arg);
+                } else if (strncmp(cmd_token, "exit", strlen("exit")) == 0) {
+                    struct built_in_arg arg = {"", ""};
+                    built_in('e', arg);
+                } /* execute command */
+                else {
+                }
+            }
+
+            // if (tmp == EOF) {
+            //     printf("EOF\n");
+            // }
+            fflush(stdout);
+            // printf("--------A command line---------\n");
+        }
     }
     return 0;
 }
