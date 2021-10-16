@@ -2,7 +2,6 @@
 #define NPSHELL_H
 
 #include <errno.h>
-// #include <regex.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,8 +10,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-
 #define PATHSIZE 100
+#define ARGSLIMIT 30
 
 struct built_in_arg {
     char name[PATHSIZE];

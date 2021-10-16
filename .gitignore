@@ -1,5 +1,6 @@
 npshell
 # bin/
 *.html
-*sh
+*.sh
 .vscode
+*.txt

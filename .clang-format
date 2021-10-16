@@ -13,6 +13,7 @@ UseTab: Never
 IndentWidth: 4
 BreakBeforeBraces: Linux
 AccessModifierOffset: -4
+ColumnLimit: 0
 ForEachMacros:   
   - foreach
   - Q_FOREACH

@@ -1,6 +1,6 @@
 CC = gcc
 CXX = g++
-CFLAGS = -Wall -g
+CFLAGS = -g -Wall
 
 BINS = npshell
 
