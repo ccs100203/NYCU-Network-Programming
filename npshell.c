@@ -156,7 +156,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             pipe_arr[0].pipefd[1] = pipefd_rhs[1];
         }
         // check pipe DEL
-        // for (int i = 0; i < 5; i++) {
+        // for (int i = 0; i < 9; i++) {
         //     printf("------%d %d %d", pipe_arr[i].isValid, pipe_arr[i].pipefd[0], pipe_arr[i].pipefd[1]);
         // }
         // printf("\n");
@@ -164,7 +164,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         /* The last command in a line, and wait all previous commands finished. */
         if (cmd_arg.isFileRedirect || cmd_arg.isNumPipe || cmd_arg.isErrPipe || !cmd_arg.isPipe) {
             debug("Last command\n");
-            while (waitpid(-1, NULL, WNOHANG) > 0)
+            while (waitpid(-1, NULL, WNOHANG) >= 0)
                 ;
         }
         break;
@@ -228,18 +228,10 @@ int main(int argc, char **argv)
                 } else if (read_token[0] == '|') {
                     cmd_arg.isNumPipe = true;
                     cmd_arg.numPipeLen = strtol(read_token + 1, NULL, 10);
-                    if (errno != 0) {
-                        perror("strtol");
-                        exit(EXIT_FAILURE);
-                    }
                     break;
                 } else if (read_token[0] == '!') {
                     cmd_arg.isErrPipe = true;
                     cmd_arg.numPipeLen = strtol(read_token + 1, NULL, 10);
-                    if (errno != 0) {
-                        perror("strtol");
-                        exit(EXIT_FAILURE);
-                    }
                     break;
                 } else {
                     strncat(command, read_token, strlen(read_token));
