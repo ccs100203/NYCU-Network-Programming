@@ -74,10 +74,14 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
     pid_t cpid;                      /* child pid */
     char *exec_argv[ARGSLIMIT] = {}; /* execute arguments */
 
+FORK_AGAIN:
+
     switch (cpid = fork()) {
     case -1:
-        perror("fork");
-        exit(EXIT_FAILURE);
+        // perror("fork");
+        // exit(EXIT_FAILURE);
+        usleep(500);
+        goto FORK_AGAIN;
         break;
     case 0: /* child */
         exec_argv[0] = cmd_token;
