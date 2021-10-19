@@ -10,21 +10,27 @@
     do {           \
         (void) 0;  \
     } while (0)
-
 #endif
 
 /* Built-in Commands */
-void built_in(char flag, struct built_in_arg args)
+void built_in(char *cmd_token, char *cmd_rest, char flag)
 {
-    char *buf;
+    char *buf;                          /* output buffer */
+    struct built_in_arg arg = {"", ""}; /* args for built-in commands */
     switch (flag) {
     case 's':
-        if (setenv(args.name, args.value, 1) == -1) {
+        cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
+        strncpy(arg.name, cmd_token, strlen(cmd_token));
+        cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
+        strncpy(arg.value, cmd_token, strlen(cmd_token));
+        if (setenv(arg.name, arg.value, 1) == -1) {
             perror("setenv\n");
         }
         break;
     case 'p':
-        buf = getenv(args.name);
+        cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
+        strncpy(arg.name, cmd_token, strlen(cmd_token));
+        buf = getenv(arg.name);
         if (buf != NULL) {
             strcat(buf, "\n");
             write(STDOUT_FILENO, buf, strlen(buf));
@@ -41,28 +47,31 @@ void built_in(char flag, struct built_in_arg args)
 
 void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
 {
-    int pipefd_r[2] = {-1, -1};  // right pipefd
-    /* check whenever create new pipe, if needed, create new one */
+    /* pipefd[0] refers to the read end of the pipe.  
+       pipefd[1] refers to the write end of the pipe. */
+    int pipefd_rhs[2] = {-1, -1};  // right hand side(rhs) pipefd
+    /* if it is a normal anonymous pipe, create a rhs pipe */
     if (cmd_arg.isPipe) {
-        debug("cmd_arg.isPipe\n");
-        if (pipe(pipefd_r) == -1) {
+        debug("normal anonymous pipe\n");
+        if (pipe(pipefd_rhs) == -1) {
             perror("pipe");
             exit(EXIT_FAILURE);
         }
-    } else if (cmd_arg.isNumPipe || cmd_arg.isErrPipe) {
+    } /* check whether create new pipe, if needed, create new one */
+    else if (cmd_arg.isNumPipe || cmd_arg.isErrPipe) {
         if (!pipe_arr[cmd_arg.numPipeLen].isValid) {
-            debug("cmd_arg.isNumPipe + ERR len: %ld\n", cmd_arg.numPipeLen);
-            if (pipe(pipefd_r) == -1) {
+            debug("Num/ERR Pipe len: %ld\n", cmd_arg.numPipeLen);
+            if (pipe(pipefd_rhs) == -1) {
                 perror("pipe");
                 exit(EXIT_FAILURE);
             }
             pipe_arr[cmd_arg.numPipeLen].isValid = true;
-            pipe_arr[cmd_arg.numPipeLen].pipefd[0] = pipefd_r[0];
-            pipe_arr[cmd_arg.numPipeLen].pipefd[1] = pipefd_r[1];
+            pipe_arr[cmd_arg.numPipeLen].pipefd[0] = pipefd_rhs[0];
+            pipe_arr[cmd_arg.numPipeLen].pipefd[1] = pipefd_rhs[1];
         }
     }
 
-    pid_t cpid;
+    pid_t cpid;                      /* child pid */
     char *exec_argv[ARGSLIMIT] = {}; /* execute arguments */
 
     switch (cpid = fork()) {
@@ -77,38 +86,47 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
              (cmd_token = strtok_r(cmd_rest, " ", &cmd_rest)) != NULL; j++) {
             exec_argv[j] = cmd_token;
         }
+        // DEL
+        // for (int i = 0; i < 5; i++) {
+        //     printf("%s ", exec_argv[i]);
+        // }
+        // printf("\n");
 
         /* I/O Processing */
         /* replace STDIN */
         if (pipe_arr[0].isValid) {
-            debug("child pipe_arr[0].isValid\n");
-            close(STDIN_FILENO);
+            debug("replace STDIN\n");
+            // close(STDIN_FILENO);
             dup2(pipe_arr[0].pipefd[0], STDIN_FILENO);
+            close(pipe_arr[0].pipefd[1]);
         }
 
-        /* replace STDOUT */
+        /* replace STDOUT & STDERR */
         if (cmd_arg.isPipe) {
             debug("child cmd_arg.isPipe\n");
-            close(STDOUT_FILENO);
-            dup2(pipefd_r[1], STDOUT_FILENO);
+            // close(STDOUT_FILENO);
+            dup2(pipefd_rhs[1], STDOUT_FILENO);
+            close(pipefd_rhs[0]);
         } else if (cmd_arg.isNumPipe) {
             debug("child cmd_arg.isNumPipe\n");
-            close(STDOUT_FILENO);
+            // close(STDOUT_FILENO);
             dup2(pipe_arr[cmd_arg.numPipeLen].pipefd[1], STDOUT_FILENO);
+            close(pipe_arr[cmd_arg.numPipeLen].pipefd[0]);
         } else if (cmd_arg.isErrPipe) {
             debug("child cmd_arg.isErrPipe\n");
-            close(STDOUT_FILENO);
+            // close(STDOUT_FILENO);
             dup2(pipe_arr[cmd_arg.numPipeLen].pipefd[1], STDOUT_FILENO);
-            close(STDERR_FILENO);
+            // close(STDERR_FILENO);
             dup2(pipe_arr[cmd_arg.numPipeLen].pipefd[1], STDERR_FILENO);
+            close(pipe_arr[cmd_arg.numPipeLen].pipefd[0]);
         } else if (cmd_arg.isFileRedirect) {
-            debug("child cmd_arg.isFileRedirect\n");
+            debug("child cmd_arg.isFileRedirect: %s\n", cmd_arg.filename);
             freopen(cmd_arg.filename, "w+", stdout);
         }
 
         /* close useless numbered pipes */
         for (int i = 1; i < 1002; i++) {
-            if (pipe_arr[i].isValid && (i != cmd_arg.numPipeLen)) {
+            if (pipe_arr[i].isValid) {  //  && (i != cmd_arg.numPipeLen)
                 close(pipe_arr[i].pipefd[0]);
                 close(pipe_arr[i].pipefd[1]);
             }
@@ -116,12 +134,12 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
 
         /* execute command */
         if (execvp(exec_argv[0], exec_argv) == -1) {
-            char unknown_cmd[100] = "Unknown command: [";
+            char unknown_cmd[CMDSIZE] = "Unknown command: [";
             strncat(unknown_cmd, exec_argv[0], strlen(exec_argv[0]));
             strcat(unknown_cmd, "].\n");
             write(STDERR_FILENO, unknown_cmd, strlen(unknown_cmd));
         }
-        debug("_exit(EXIT_SUCCESS);\n");
+        debug("after execvp _exit(EXIT_SUCCESS);\n");
         _exit(EXIT_SUCCESS);
         break;
     default: /* parent */
@@ -134,10 +152,10 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         if (cmd_arg.isPipe) {
             debug("parent cmd_arg.isPipe\n");
             pipe_arr[0].isValid = true;
-            pipe_arr[0].pipefd[0] = pipefd_r[0];
-            pipe_arr[0].pipefd[1] = pipefd_r[1];
+            pipe_arr[0].pipefd[0] = pipefd_rhs[0];
+            pipe_arr[0].pipefd[1] = pipefd_rhs[1];
         }
-        // check pipe
+        // check pipe DEL
         // for (int i = 0; i < 5; i++) {
         //     printf("------%d %d %d", pipe_arr[i].isValid, pipe_arr[i].pipefd[0], pipe_arr[i].pipefd[1]);
         // }
@@ -146,10 +164,9 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         /* The last command in a line, and wait all previous commands finished. */
         if (cmd_arg.isFileRedirect || cmd_arg.isNumPipe || cmd_arg.isErrPipe || !cmd_arg.isPipe) {
             debug("Last command\n");
-            while (waitpid(-1, NULL, WNOHANG) >= 0)
+            while (waitpid(-1, NULL, WNOHANG) > 0)
                 ;
         }
-
         break;
     }
     debug("End of exec Func\n");
@@ -176,7 +193,6 @@ int main(int argc, char **argv)
     sa.sa_flags = 0;
     // sigaction(SIGCHLD, &sa, NULL);
 
-
     char *read_buf;       // read buffer
     size_t read_len = 0;  // record read buffer length
     /* loop for each line */
@@ -184,18 +200,19 @@ int main(int argc, char **argv)
         /* print prompt */
         write(STDOUT_FILENO, "\% ", strlen("\% "));
         if (getline(&read_buf, &read_len, stdin) < 0) {
+            debug("getline < 0\n");
             break;
         }
 
         /* The following variables will be reset each read line*/
         char *read_token; /* record readline token for split */
         char *read_rest = read_buf;
-        pipeLen = 0;
+        numOfCmd = 0;
         /* loop for each command*/
         while (read_rest[0] != '\0') {
             /* The following variables will be reset each command*/
-            char command[266] = "";
-            struct cmd_arg cmd_arg = {0};
+            char command[CMDSIZE] = "";
+            struct cmd_arg cmd_arg = {0}; /* args for execution commands */
 
             /* extract a command */
             /* record different options */
@@ -203,7 +220,7 @@ int main(int argc, char **argv)
                 if (strncmp(read_token, "|", strlen(read_token)) == 0) {
                     cmd_arg.isPipe = true;
                     break;
-                } else if (strncmp(read_token, ">", strlen(">")) == 0) {
+                } else if (strncmp(read_token, ">", strlen(read_token)) == 0) {
                     cmd_arg.isFileRedirect = true;
                     read_token = strtok_r(read_rest, " \n", &read_rest);
                     strncpy(cmd_arg.filename, read_token, strlen(read_token));
@@ -234,39 +251,29 @@ int main(int argc, char **argv)
             /* check and execute a command*/
             char *cmd_token = 0; /* record command token for split */
             char *cmd_rest = command;
+            /* prevent empty command */
             if (command[0] != '\0') {
-                pipeLen++;  // record how many command in this line
+                numOfCmd++; /* record how many command in this line */
                 cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
 
                 /* built-in command */
                 if (strncmp(cmd_token, "setenv", strlen("setenv")) == 0) {
-                    struct built_in_arg arg = {"", ""};
-                    cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
-                    strncpy(arg.name, cmd_token, strlen(cmd_token));
-                    cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
-                    strncpy(arg.value, cmd_token, strlen(cmd_token));
-                    built_in('s', arg);
+                    built_in(cmd_token, cmd_rest, 's');
                 } else if (strncmp(cmd_token, "printenv", strlen("printenv")) == 0) {
-                    struct built_in_arg arg = {"", ""};
-                    cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
-                    strncpy(arg.name, cmd_token, strlen(cmd_token));
-                    built_in('p', arg);
+                    built_in(cmd_token, cmd_rest, 'p');
                 } else if (strncmp(cmd_token, "exit", strlen("exit")) == 0) {
-                    struct built_in_arg arg = {"", ""};
-                    built_in('e', arg);
-                } /* execute command */
+                    built_in(cmd_token, cmd_rest, 'e');
+                } /* execution command */
                 else {
                     execCmd(cmd_token, cmd_rest, cmd_arg);
                 }
+                debug("--------A command---------\n");
             }
-
-            fflush(stdout);
-            debug("--------A command---------\n");
         }
-        /* shift-left 1 for number pipe */
-        if (pipeLen > 0) {
-            memmove(pipe_arr, pipe_arr + 1, sizeof(struct pipe_unit) * 1000);
-            debug("--------A read line---------\n");
+        /* if it isn't a empty command line, shift-left 1 for number pipe */
+        if (numOfCmd > 0) {
+            memmove(pipe_arr, pipe_arr + 1, sizeof(struct pipe_unit) * 1002);
+            debug("--------A read line---------%ld\n", numOfCmd);
         }
     }
     return 0;

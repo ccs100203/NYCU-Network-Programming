@@ -11,8 +11,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define PATHSIZE 100
+#define PATHSIZE 200
 #define ARGSLIMIT 30
+#define CMDSIZE 266
 
 struct built_in_arg {
     char name[PATHSIZE];
@@ -33,10 +34,10 @@ struct pipe_unit {
     bool isValid;
 };
 
-void built_in(char flag, struct built_in_arg args);
+void built_in(char *cmd_token, char *cmd_rest, char flag);
 static void child_handler(int signum);
 
 struct pipe_unit pipe_arr[1010] = {0};
-size_t pipeLen = 0;
+size_t numOfCmd = 0; /* number of commands in a line*/
 
 #endif
