@@ -166,14 +166,19 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         // printf("\n");
 
         /* The last command in a line, and wait all previous commands finished. */
-        if (cmd_arg.isFileRedirect || cmd_arg.isNumPipe || cmd_arg.isErrPipe || !cmd_arg.isPipe) {
+        // if (cmd_arg.isFileRedirect || cmd_arg.isNumPipe || cmd_arg.isErrPipe || !cmd_arg.isPipe) {
+        //     debug("Last command\n");
+        //     clock_t start = clock();
+        //     while (waitpid(-1, NULL, WNOHANG) >= 0) {
+        //         if ((clock() - start) / CLOCKS_PER_SEC > 1) {
+        //             break;
+        //         }
+        //     }
+        // }
+        if (cmd_arg.isFileRedirect || !(cmd_arg.isNumPipe || cmd_arg.isErrPipe || cmd_arg.isPipe)) {
             debug("Last command\n");
-            clock_t start = clock();
-            while (waitpid(-1, NULL, WNOHANG) >= 0) {
-                if ((clock() - start) / CLOCKS_PER_SEC > 2) {
-                    break;
-                }
-            }
+            while (waitpid(-1, NULL, WNOHANG) >= 0)
+                ;
         }
         break;
     }
