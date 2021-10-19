@@ -49,8 +49,8 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
 {
     /* pipefd[0] refers to the read end of the pipe.  
        pipefd[1] refers to the write end of the pipe. */
-    int pipefd_rhs[2] = {-1, -1};  // right hand side(rhs) pipefd
-    bool isNewPipe = false;
+    int pipefd_rhs[2] = {-1, -1};  /* right hand side(rhs) pipefd */
+    bool isNewPipe = false; /* check if create a new pipe */
     /* if it is a normal anonymous pipe, create a rhs pipe */
     if (cmd_arg.isPipe) {
         debug("normal anonymous pipe\n");
@@ -63,6 +63,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
     else if (cmd_arg.isNumPipe || cmd_arg.isErrPipe) {
         if (!pipe_arr[cmd_arg.numPipeLen].isValid) {
             debug("Num/ERR Pipe len: %ld\n", cmd_arg.numPipeLen);
+            /* TODO */
             if (pipe2(pipefd_rhs, O_NONBLOCK) == -1) {
                 perror("pipe rhs error");
                 exit(EXIT_FAILURE);
@@ -76,13 +77,10 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
 
     pid_t cpid;                      /* child pid */
     char *exec_argv[ARGSLIMIT] = {}; /* execute arguments */
-    bool isForkErr = false;
+    bool isForkErr = false;/* check if fork error occurred */
 
     switch (cpid = fork()) {
-    case -1:
-        // perror("fork");
-        // exit(EXIT_FAILURE);
-        usleep(1000);
+    case -1: /* fork error*/
         isForkErr = true;
         break;
     case 0: /* child */
@@ -178,6 +176,8 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
     debug("End of exec Func\n");
     /* re-fork */
     if (isForkErr) {
+        usleep(1000);
+        /* close new pipe */
         if (isNewPipe) {
             close(pipefd_rhs[0]);
             close(pipefd_rhs[1]);
@@ -187,6 +187,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
                 pipe_arr[cmd_arg.numPipeLen].isValid = false;
             }
         }
+        /* redo this function */
         execCmd(cmd_token, cmd_rest, cmd_arg);
     }
 }
@@ -208,12 +209,11 @@ int main(int argc, char **argv)
     struct sigaction sa;
     sa.sa_handler = child_handler;
     sigemptyset(&sa.sa_mask);
-    // sigfillset(&sa.sa_mask);
     sa.sa_flags = 0;
-    // sigaction(SIGCHLD, &sa, NULL);
+    sigaction(SIGCHLD, &sa, NULL);
 
-    char *read_buf;       // read buffer
-    size_t read_len = 0;  // record read buffer length
+    char *read_buf;      /* read buffer */
+    size_t read_len = 0; /* record read buffer length */
     /* loop for each line */
     while (1) {
         /* print prompt */
