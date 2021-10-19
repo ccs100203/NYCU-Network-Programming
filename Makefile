@@ -17,4 +17,4 @@ debug: CFLAGS += -D DEBUG
 debug: npshell all
 
 clean:
-	rm $(BINS) test*.txt
+	rm $(BINS)

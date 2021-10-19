@@ -50,38 +50,40 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
     /* pipefd[0] refers to the read end of the pipe.  
        pipefd[1] refers to the write end of the pipe. */
     int pipefd_rhs[2] = {-1, -1};  // right hand side(rhs) pipefd
+    bool isNewPipe = false;
     /* if it is a normal anonymous pipe, create a rhs pipe */
     if (cmd_arg.isPipe) {
         debug("normal anonymous pipe\n");
         if (pipe(pipefd_rhs) == -1) {
-            perror("pipe");
+            perror("pipe rhs error");
             exit(EXIT_FAILURE);
         }
+        isNewPipe = true;
     } /* check whether create new pipe, if needed, create new one */
     else if (cmd_arg.isNumPipe || cmd_arg.isErrPipe) {
         if (!pipe_arr[cmd_arg.numPipeLen].isValid) {
             debug("Num/ERR Pipe len: %ld\n", cmd_arg.numPipeLen);
             if (pipe(pipefd_rhs) == -1) {
-                perror("pipe");
+                perror("pipe rhs error");
                 exit(EXIT_FAILURE);
             }
             pipe_arr[cmd_arg.numPipeLen].isValid = true;
             pipe_arr[cmd_arg.numPipeLen].pipefd[0] = pipefd_rhs[0];
             pipe_arr[cmd_arg.numPipeLen].pipefd[1] = pipefd_rhs[1];
+            isNewPipe = true;
         }
     }
 
     pid_t cpid;                      /* child pid */
     char *exec_argv[ARGSLIMIT] = {}; /* execute arguments */
-
-FORK_AGAIN:
+    bool isForkErr = false;
 
     switch (cpid = fork()) {
     case -1:
         // perror("fork");
         // exit(EXIT_FAILURE);
-        usleep(500);
-        goto FORK_AGAIN;
+        usleep(1000);
+        isForkErr = true;
         break;
     case 0: /* child */
         exec_argv[0] = cmd_token;
@@ -174,6 +176,19 @@ FORK_AGAIN:
         break;
     }
     debug("End of exec Func\n");
+    /* re-fork */
+    if (isForkErr) {
+        if (isNewPipe) {
+            close(pipefd_rhs[0]);
+            close(pipefd_rhs[1]);
+            if (cmd_arg.isNumPipe || cmd_arg.isErrPipe) {
+                close(pipefd_rhs[0]);
+                close(pipefd_rhs[1]);
+                pipe_arr[cmd_arg.numPipeLen].isValid = false;
+            }
+        }
+        execCmd(cmd_token, cmd_rest, cmd_arg);
+    }
 }
 
 static void child_handler(int signum)
