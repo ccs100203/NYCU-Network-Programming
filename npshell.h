@@ -1,7 +1,10 @@
 #ifndef NPSHELL_H
 #define NPSHELL_H
 
+#define _GNU_SOURCE
+
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>

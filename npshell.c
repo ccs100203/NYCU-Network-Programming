@@ -63,7 +63,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
     else if (cmd_arg.isNumPipe || cmd_arg.isErrPipe) {
         if (!pipe_arr[cmd_arg.numPipeLen].isValid) {
             debug("Num/ERR Pipe len: %ld\n", cmd_arg.numPipeLen);
-            if (pipe(pipefd_rhs) == -1) {
+            if (pipe2(pipefd_rhs, O_NONBLOCK) == -1) {
                 perror("pipe rhs error");
                 exit(EXIT_FAILURE);
             }
