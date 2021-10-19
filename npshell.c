@@ -49,8 +49,8 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
 {
     /* pipefd[0] refers to the read end of the pipe.  
        pipefd[1] refers to the write end of the pipe. */
-    int pipefd_rhs[2] = {-1, -1};  /* right hand side(rhs) pipefd */
-    bool isNewPipe = false; /* check if create a new pipe */
+    int pipefd_rhs[2] = {-1, -1}; /* right hand side(rhs) pipefd */
+    bool isNewPipe = false;       /* check if create a new pipe */
     /* if it is a normal anonymous pipe, create a rhs pipe */
     if (cmd_arg.isPipe) {
         debug("normal anonymous pipe\n");
@@ -64,7 +64,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         if (!pipe_arr[cmd_arg.numPipeLen].isValid) {
             debug("Num/ERR Pipe len: %ld\n", cmd_arg.numPipeLen);
             /* TODO */
-            if (pipe2(pipefd_rhs, O_NONBLOCK) == -1) {
+            if (pipe2(pipefd_rhs, 0) == -1) {
                 perror("pipe rhs error");
                 exit(EXIT_FAILURE);
             }
@@ -77,7 +77,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
 
     pid_t cpid;                      /* child pid */
     char *exec_argv[ARGSLIMIT] = {}; /* execute arguments */
-    bool isForkErr = false;/* check if fork error occurred */
+    bool isForkErr = false;          /* check if fork error occurred */
 
     switch (cpid = fork()) {
     case -1: /* fork error*/
@@ -168,8 +168,12 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         /* The last command in a line, and wait all previous commands finished. */
         if (cmd_arg.isFileRedirect || cmd_arg.isNumPipe || cmd_arg.isErrPipe || !cmd_arg.isPipe) {
             debug("Last command\n");
-            while (waitpid(-1, NULL, WNOHANG) >= 0)
-                ;
+            clock_t start = clock();
+            while (waitpid(-1, NULL, WNOHANG) >= 0) {
+                if ((clock() - start) / CLOCKS_PER_SEC > 2) {
+                    break;
+                }
+            }
         }
         break;
     }
