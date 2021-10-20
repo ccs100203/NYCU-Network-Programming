@@ -15,7 +15,7 @@
 /* Built-in Commands */
 void built_in(char *cmd_token, char *cmd_rest, char flag)
 {
-    char *buf;                          /* output buffer */
+    char *buf = 0;                      /* output buffer */
     struct built_in_arg arg = {"", ""}; /* args for built-in commands */
     switch (flag) {
     case 's':
@@ -32,8 +32,8 @@ void built_in(char *cmd_token, char *cmd_rest, char flag)
         strncpy(arg.name, cmd_token, strlen(cmd_token));
         buf = getenv(arg.name);
         if (buf != NULL) {
-            strcat(buf, "\n");
             write(STDOUT_FILENO, buf, strlen(buf));
+            write(STDOUT_FILENO, "\n", strlen("\n"));
         }
         break;
     case 'e':
@@ -133,7 +133,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             write(STDERR_FILENO, unknown_cmd, strlen(unknown_cmd));
         }
         debug("after execvp Unknown command;\n");
-        _exit(EXIT_SUCCESS);
+        exit(EXIT_SUCCESS);
         break;
     default: /* parent */
         if (pipe_arr[0].isValid) {
@@ -241,7 +241,9 @@ int main(int argc, char **argv)
                     strcat(command, " ");
                 }
             }
-            debug("command: %s\n", command);
+            /* strip the last space */
+            command[strlen(command) - 1] = (command[strlen(command) - 1] == ' ') ? '\0' : command[strlen(command) - 1];
+            debug("command: %s len: %ld\n", command, strlen(command));
 
             /* check and execute a command*/
             char *cmd_token = 0; /* record command token for split */
