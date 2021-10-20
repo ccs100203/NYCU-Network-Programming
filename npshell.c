@@ -64,7 +64,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         if (!pipe_arr[cmd_arg.numPipeLen].isValid) {
             debug("Num/ERR Pipe len: %ld\n", cmd_arg.numPipeLen);
             /* TODO */
-            if (pipe2(pipefd_rhs, 0) == -1) {
+            if (pipe(pipefd_rhs) == -1) {
                 perror("pipe rhs error");
                 exit(EXIT_FAILURE);
             }
@@ -90,17 +90,10 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
              (cmd_token = strtok_r(cmd_rest, " ", &cmd_rest)) != NULL; j++) {
             exec_argv[j] = cmd_token;
         }
-        // DEL
-        // for (int i = 0; i < 5; i++) {
-        //     printf("%s ", exec_argv[i]);
-        // }
-        // printf("\n");
-
         /* I/O Processing */
         /* replace STDIN */
         if (pipe_arr[0].isValid) {
             debug("replace STDIN\n");
-            // close(STDIN_FILENO);
             dup2(pipe_arr[0].pipefd[0], STDIN_FILENO);
             close(pipe_arr[0].pipefd[1]);
         }
@@ -108,19 +101,15 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         /* replace STDOUT & STDERR */
         if (cmd_arg.isPipe) {
             debug("child cmd_arg.isPipe\n");
-            // close(STDOUT_FILENO);
             dup2(pipefd_rhs[1], STDOUT_FILENO);
             close(pipefd_rhs[0]);
         } else if (cmd_arg.isNumPipe) {
             debug("child cmd_arg.isNumPipe\n");
-            // close(STDOUT_FILENO);
             dup2(pipe_arr[cmd_arg.numPipeLen].pipefd[1], STDOUT_FILENO);
             close(pipe_arr[cmd_arg.numPipeLen].pipefd[0]);
         } else if (cmd_arg.isErrPipe) {
             debug("child cmd_arg.isErrPipe\n");
-            // close(STDOUT_FILENO);
             dup2(pipe_arr[cmd_arg.numPipeLen].pipefd[1], STDOUT_FILENO);
-            // close(STDERR_FILENO);
             dup2(pipe_arr[cmd_arg.numPipeLen].pipefd[1], STDERR_FILENO);
             close(pipe_arr[cmd_arg.numPipeLen].pipefd[0]);
         } else if (cmd_arg.isFileRedirect) {
@@ -137,13 +126,14 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         }
 
         /* execute command */
+        printf("exec_argv %s, %s, %s \n", exec_argv[0], exec_argv[1], exec_argv[2]);
         if (execvp(exec_argv[0], exec_argv) == -1) {
             char unknown_cmd[CMDSIZE] = "Unknown command: [";
             strncat(unknown_cmd, exec_argv[0], strlen(exec_argv[0]));
             strcat(unknown_cmd, "].\n");
             write(STDERR_FILENO, unknown_cmd, strlen(unknown_cmd));
         }
-        debug("after execvp _exit(EXIT_SUCCESS);\n");
+        debug("after execvp Unknown command;\n");
         _exit(EXIT_SUCCESS);
         break;
     default: /* parent */
@@ -159,22 +149,8 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             pipe_arr[0].pipefd[0] = pipefd_rhs[0];
             pipe_arr[0].pipefd[1] = pipefd_rhs[1];
         }
-        // check pipe DEL
-        // for (int i = 0; i < 9; i++) {
-        //     printf("------%d %d %d", pipe_arr[i].isValid, pipe_arr[i].pipefd[0], pipe_arr[i].pipefd[1]);
-        // }
-        // printf("\n");
 
         /* The last command in a line, and wait all previous commands finished. */
-        // if (cmd_arg.isFileRedirect || cmd_arg.isNumPipe || cmd_arg.isErrPipe || !cmd_arg.isPipe) {
-        //     debug("Last command\n");
-        //     clock_t start = clock();
-        //     while (waitpid(-1, NULL, WNOHANG) >= 0) {
-        //         if ((clock() - start) / CLOCKS_PER_SEC > 1) {
-        //             break;
-        //         }
-        //     }
-        // }
         if (cmd_arg.isFileRedirect || !(cmd_arg.isNumPipe || cmd_arg.isErrPipe || cmd_arg.isPipe)) {
             debug("Last command\n");
             while (waitpid(-1, NULL, WNOHANG) >= 0)
@@ -214,7 +190,7 @@ int main(int argc, char **argv)
         perror("setenv\n");
     }
 
-    /* signal handlers */
+    /* signal handlers, recycle process immediately, don't throw to .init */
     struct sigaction sa;
     sa.sa_handler = child_handler;
     sigemptyset(&sa.sa_mask);
