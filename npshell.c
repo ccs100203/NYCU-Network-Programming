@@ -18,6 +18,7 @@ void built_in(char *cmd_token, char *cmd_rest, char flag)
     char *buf = 0;                      /* output buffer */
     struct built_in_arg arg = {"", ""}; /* args for built-in commands */
     switch (flag) {
+    /* setenv */
     case 's':
         cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest);
         strncpy(arg.name, cmd_token, strlen(cmd_token));
@@ -27,6 +28,7 @@ void built_in(char *cmd_token, char *cmd_rest, char flag)
             perror("setenv\n");
         }
         break;
+    /* printenv */
     case 'p':
         cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest);
         strncpy(arg.name, cmd_token, strlen(cmd_token));
@@ -36,6 +38,7 @@ void built_in(char *cmd_token, char *cmd_rest, char flag)
             write(STDOUT_FILENO, "\n", strlen("\n"));
         }
         break;
+    /* exit */
     case 'e':
         exit(EXIT_SUCCESS);
         break;
@@ -44,6 +47,19 @@ void built_in(char *cmd_token, char *cmd_rest, char flag)
         break;
     }
 }
+
+/* 
+ * Key Concept:
+ * Using a pipe array to maintain normal pipe and numbered pipe.
+ * Each process will check if the array[0] is valid, it represents that 
+ * the process has STDIN from other process(es).
+ * If a process have to redirect its STDOUT/STDERR to a pipe, 
+ * it will create a new or exploit an existing pipe in the corresponding index of array.
+ * Each end of input Line will shift the pipe array left, 
+ * it represent that the npshell read next line, and maintain it for the numbered pipe.
+ * 
+ * To sum up, a process will POP from the array[0], and PUSH a pipefd into array if needed.
+ */
 
 void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
 {
@@ -63,7 +79,6 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
     else if (cmd_arg.isNumPipe || cmd_arg.isErrPipe) {
         if (!pipe_arr[cmd_arg.numPipeLen].isValid) {
             debug("Num/ERR Pipe len: %ld\n", cmd_arg.numPipeLen);
-            /* TODO */
             if (pipe(pipefd_rhs) == -1) {
                 perror("pipe rhs error");
                 exit(EXIT_FAILURE);
@@ -80,7 +95,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
     bool isForkErr = false;          /* check if fork error occurred */
 
     switch (cpid = fork()) {
-    case -1: /* fork error*/
+    case -1: /* fork error, reach process max limit, it will re-fork later */
         isForkErr = true;
         break;
     case 0: /* child */
@@ -132,16 +147,18 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             strcat(unknown_cmd, "].\n");
             write(STDERR_FILENO, unknown_cmd, strlen(unknown_cmd));
         }
-        debug("after execvp Unknown command;\n");
+        debug("after execvp, Unknown command;\n");
         exit(EXIT_SUCCESS);
         break;
     default: /* parent */
+        /* close useless input pipe */
         if (pipe_arr[0].isValid) {
             debug("parent isValid\n");
             close(pipe_arr[0].pipefd[0]);
             close(pipe_arr[0].pipefd[1]);
             pipe_arr[0].isValid = false;
         }
+        /* normal pipe, add a pipefd to array */
         if (cmd_arg.isPipe) {
             debug("parent cmd_arg.isPipe\n");
             pipe_arr[0].isValid = true;
@@ -150,6 +167,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         }
 
         /* The last command in a line, and wait all previous commands finished. */
+        /* Only wait the visible command situations (influencing the prompt) */
         if (cmd_arg.isFileRedirect || !(cmd_arg.isNumPipe || cmd_arg.isErrPipe || cmd_arg.isPipe)) {
             debug("Last command\n");
             while (waitpid(-1, NULL, WNOHANG) >= 0)
