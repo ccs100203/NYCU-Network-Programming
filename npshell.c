@@ -19,16 +19,16 @@ void built_in(char *cmd_token, char *cmd_rest, char flag)
     struct built_in_arg arg = {"", ""}; /* args for built-in commands */
     switch (flag) {
     case 's':
-        cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
+        cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest);
         strncpy(arg.name, cmd_token, strlen(cmd_token));
-        cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
+        cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest);
         strncpy(arg.value, cmd_token, strlen(cmd_token));
         if (setenv(arg.name, arg.value, 1) == -1) {
             perror("setenv\n");
         }
         break;
     case 'p':
-        cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
+        cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest);
         strncpy(arg.name, cmd_token, strlen(cmd_token));
         buf = getenv(arg.name);
         if (buf != NULL) {
@@ -87,7 +87,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         exec_argv[0] = cmd_token;
         /* extract arguments of command */
         for (int j = 1;
-             (cmd_token = strtok_r(cmd_rest, " ", &cmd_rest)) != NULL; j++) {
+             (cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest)) != NULL; j++) {
             exec_argv[j] = cmd_token;
         }
         /* I/O Processing */
@@ -249,7 +249,7 @@ int main(int argc, char **argv)
             /* prevent empty command */
             if (command[0] != '\0') {
                 numOfCmd++; /* record how many command in this line */
-                cmd_token = strtok_r(cmd_rest, " ", &cmd_rest);
+                cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest);
 
                 /* built-in command */
                 if (strncmp(cmd_token, "setenv", strlen("setenv")) == 0) {
