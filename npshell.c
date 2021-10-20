@@ -126,7 +126,6 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         }
 
         /* execute command */
-        printf("exec_argv %s, %s, %s \n", exec_argv[0], exec_argv[1], exec_argv[2]);
         if (execvp(exec_argv[0], exec_argv) == -1) {
             char unknown_cmd[CMDSIZE] = "Unknown command: [";
             strncat(unknown_cmd, exec_argv[0], strlen(exec_argv[0]));
