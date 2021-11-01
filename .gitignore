@@ -1,0 +1,5 @@
+npshell
+*.html
+*.sh
+.vscode
+*.txt
