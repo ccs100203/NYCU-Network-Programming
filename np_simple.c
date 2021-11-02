@@ -4,7 +4,7 @@
 int main(int argc, char **argv)
 {
     // char inputBuffer[256] = {};
-    char message[] = {"Hi,this is server.\n"};
+    // char message[] = {"Hi,this is server.\n"};
     int sockfd = 0, forClientSockfd = 0;
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -33,7 +33,7 @@ int main(int argc, char **argv)
             break;
         case 0: /* child */
             forClientSockfd = accept(sockfd, (struct sockaddr *) &clientInfo, &addrlen);
-            send(forClientSockfd, message, sizeof(message), 0);
+            // send(forClientSockfd, message, sizeof(message), 0);
             dup2(forClientSockfd, STDIN_FILENO);
             dup2(forClientSockfd, STDOUT_FILENO);
             dup2(forClientSockfd, STDERR_FILENO);
