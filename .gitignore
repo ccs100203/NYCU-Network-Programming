@@ -3,3 +3,5 @@ npshell
 *.sh
 .vscode
 *.txt
+
+np_simple
