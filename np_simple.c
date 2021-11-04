@@ -22,9 +22,9 @@ int main(int argc, char **argv)
     bind(sockfd, (struct sockaddr *) &serverInfo, sizeof(serverInfo));
     listen(sockfd, 5);
 
+    int savefd[3] = {0};
 
     while (1) {
-        printf("HERE----\n");
         // forClientSockfd = accept(sockfd, (struct sockaddr *) &clientInfo, &addrlen);
         // send(forClientSockfd, message, sizeof(message), 0);
         switch (fork()) {
@@ -33,16 +33,22 @@ int main(int argc, char **argv)
             break;
         case 0: /* child */
             forClientSockfd = accept(sockfd, (struct sockaddr *) &clientInfo, &addrlen);
+            printf("accept success\n");
             // send(forClientSockfd, message, sizeof(message), 0);
-            dup2(forClientSockfd, STDIN_FILENO);
-            dup2(forClientSockfd, STDOUT_FILENO);
-            dup2(forClientSockfd, STDERR_FILENO);
+            for (int i = 0; i < 3; ++i) {
+                savefd[i] = dup(i);
+                dup2(forClientSockfd, i);
+            }
             npshell();
             exit(EXIT_SUCCESS);
             break;
         default: /* parent */
             while (waitpid(-1, NULL, WNOHANG) >= 0)
                 ;
+            close(forClientSockfd);
+            for (int i = 0; i < 3; ++i) {
+                dup2(savefd[i], i);
+            }
             break;
         }
     }

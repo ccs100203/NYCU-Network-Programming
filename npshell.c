@@ -217,14 +217,21 @@ void npshell()
     sa.sa_flags = 0;
     sigaction(SIGCHLD, &sa, NULL);
 
-    char *read_buf;      /* read buffer */
-    size_t read_len = 0; /* record read buffer length */
+    char *read_buf = NULL; /* read buffer */
+    size_t read_len = 0;   /* record read buffer length */
     /* loop for each line */
     while (1) {
+        read_buf = NULL;
+        read_len = 0;
         /* print prompt */
         write(STDOUT_FILENO, "\% ", strlen("\% "));
         if (getline(&read_buf, &read_len, stdin) < 0) {
             debug("getline < 0\n");
+            if (errno == EINVAL) {
+                printf("EINVAL\n");
+            } else if (errno == ENOMEM) {
+                printf("ENOMEM\n");
+            }
             break;
         }
 
@@ -293,6 +300,8 @@ void npshell()
             memmove(pipe_arr, pipe_arr + 1, sizeof(struct pipe_unit) * 1002);
             debug("--------A read line---------%ld\n", numOfCmd);
         }
+        if (read_buf)
+            free(read_buf);
     }
 }
 
