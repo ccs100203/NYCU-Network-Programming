@@ -5,7 +5,7 @@ CFLAGS = -g -Wall
 BINS = npshell
 
 all: $(BINS)
-	clang-format -i npshell.*
+	# clang-format -i npshell.*
 
 npshell: npshell.c
 	$(CC) $(CFLAGS) -o $@ $<
