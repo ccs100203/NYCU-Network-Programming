@@ -37,7 +37,7 @@ struct pipe_unit {
 };
 
 void built_in(char *cmd_token, char *cmd_rest, char flag);
-static void child_handler(int signum);
+void child_handler(int signum);
 
 struct pipe_unit pipe_arr[1010] = {0};
 size_t numOfCmd = 0; /* number of commands in a line*/

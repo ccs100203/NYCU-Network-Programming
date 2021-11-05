@@ -148,7 +148,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             char unknown_cmd[CMDSIZE] = "Unknown command: [";
             strncat(unknown_cmd, exec_argv[0], strlen(exec_argv[0]));
             strcat(unknown_cmd, "].");
-            printf("%s\n", unknown_cmd)
+            fprintf(stderr, "%s\n", unknown_cmd);
         }
         debug("after execvp, Unknown command;\n");
         exit(EXIT_SUCCESS);
@@ -197,7 +197,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
     }
 }
 
-static void child_handler(int signum)
+void child_handler(int signum)
 {
     while (waitpid(-1, NULL, WNOHANG) > 0)
         ;
@@ -224,7 +224,7 @@ int main(int argc, char **argv)
         read_len = 0;
         /* print prompt */
         printf("%% ");
-        fflush(STDOUT_FILENO);
+        fflush(stdout);
         if (getline(&read_buf, &read_len, stdin) < 0) {
             debug("getline < 0\n");
             break;
