@@ -3,56 +3,62 @@
 
 int main(int argc, char **argv)
 {
-    // char inputBuffer[256] = {};
-    // char message[] = {"Hi,this is server.\n"};
-    int sockfd = 0, forClientSockfd = 0;
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    /* signal handlers, recycle process immediately, don't throw to .init */
+    struct sigaction sa;
+    sa.sa_handler = child_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGCHLD, &sa, NULL);
 
-    if (sockfd == -1) {
-        printf("Fail to create a socket.");
+    uint16_t port = 7001;
+    if(argv[1])
+        port = strtol(argv[1], NULL, 10);
+    debug("port: %u\n", port);
+
+    int sockfd = 0, csockfd = 0;
+    
+
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        perror("Fail to create a socket.");
     }
 
-    struct sockaddr_in serverInfo, clientInfo;
-    socklen_t addrlen = sizeof(clientInfo);
-    bzero(&serverInfo, sizeof(serverInfo));
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0)
+        perror("setsockopt(SO_REUSEADDR) failed");
 
-    serverInfo.sin_family = PF_INET;
-    serverInfo.sin_addr.s_addr = INADDR_ANY;
-    serverInfo.sin_port = htons(7005);
-    bind(sockfd, (struct sockaddr *) &serverInfo, sizeof(serverInfo));
+    struct sockaddr_in servAddr, clientAddr;
+    socklen_t addrlen = sizeof(clientAddr);
+    bzero(&servAddr, sizeof(servAddr));
+
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_addr.s_addr = INADDR_ANY;
+    servAddr.sin_port = htons(port);
+    bind(sockfd, (struct sockaddr *) &servAddr, sizeof(servAddr));
     listen(sockfd, 5);
 
-    int savefd[3] = {0};
-
     while (1) {
-        // forClientSockfd = accept(sockfd, (struct sockaddr *) &clientInfo, &addrlen);
-        // send(forClientSockfd, message, sizeof(message), 0);
+        csockfd = accept(sockfd, (struct sockaddr *) &clientAddr, &addrlen);
+        printf("accept success\n");
         switch (fork()) {
         case -1:
             perror("fork error");
             break;
         case 0: /* child */
-            forClientSockfd = accept(sockfd, (struct sockaddr *) &clientInfo, &addrlen);
-            printf("accept success\n");
-            // send(forClientSockfd, message, sizeof(message), 0);
             for (int i = 0; i < 3; ++i) {
-                savefd[i] = dup(i);
-                dup2(forClientSockfd, i);
+                dup2(csockfd, i);
             }
+            close(csockfd);
             npshell();
+            printf("not exec\n");
             exit(EXIT_SUCCESS);
             break;
         default: /* parent */
+            close(csockfd);
             while (waitpid(-1, NULL, WNOHANG) >= 0)
                 ;
-            close(forClientSockfd);
-            for (int i = 0; i < 3; ++i) {
-                dup2(savefd[i], i);
-            }
+            printf("after wait\n");
             break;
         }
     }
-
 
     return 0;
 }

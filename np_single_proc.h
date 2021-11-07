@@ -1,5 +1,5 @@
-#ifndef NPSHELL_H
-#define NPSHELL_H
+#ifndef NP_SINGLE_PROC_H
+#define NP_SINGLE_PROC_H
 
 #define _GNU_SOURCE
 
@@ -12,6 +12,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
 
 #define PATHSIZE 200
 #define ARGSLIMIT 30
@@ -38,21 +41,9 @@ struct pipe_unit {
 
 void built_in(char *cmd_token, char *cmd_rest, char flag);
 void child_handler(int signum);
-void npshell();
+int npshell();
 
-extern struct pipe_unit pipe_arr[1010];
-extern size_t numOfCmd; /* number of commands in a line */
-
-#ifdef DEBUG
-#define debug(...)           \
-    do {                     \
-        printf(__VA_ARGS__); \
-    } while (0)
-#else
-#define debug(...) \
-    do {           \
-        (void) 0;  \
-    } while (0)
-#endif
+struct pipe_unit pipe_arr[30][1010] = {0};
+int currSock = 0;
 
 #endif

@@ -1,5 +1,6 @@
 #include "npshell.h"
 
+/*
 #ifdef DEBUG
 #define debug(...)           \
     do {                     \
@@ -11,9 +12,10 @@
         (void) 0;  \
     } while (0)
 #endif
+*/
 
 struct pipe_unit pipe_arr[1010] = {0};
-size_t numOfCmd = 0; /* number of commands in a line*/
+size_t numOfCmd = 0; /* number of commands in a line */
 
 /* Built-in Commands */
 void built_in(char *cmd_token, char *cmd_rest, char flag)
@@ -23,9 +25,9 @@ void built_in(char *cmd_token, char *cmd_rest, char flag)
     switch (flag) {
     /* setenv */
     case 's':
-        cmd_token = strtok_r(cmd_rest, " \r\n", &cmd_rest);
+        cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest);
         strncpy(arg.name, cmd_token, strlen(cmd_token));
-        cmd_token = strtok_r(cmd_rest, " \r\n", &cmd_rest);
+        cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest);
         strncpy(arg.value, cmd_token, strlen(cmd_token));
         if (setenv(arg.name, arg.value, 1) == -1) {
             perror("setenv\n");
@@ -33,12 +35,11 @@ void built_in(char *cmd_token, char *cmd_rest, char flag)
         break;
     /* printenv */
     case 'p':
-        cmd_token = strtok_r(cmd_rest, " \r\n", &cmd_rest);
+        cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest);
         strncpy(arg.name, cmd_token, strlen(cmd_token));
         buf = getenv(arg.name);
         if (buf != NULL) {
-            write(STDOUT_FILENO, buf, strlen(buf));
-            write(STDOUT_FILENO, "\n", strlen("\n"));
+            printf("%s\n", buf);
         }
         break;
     /* exit */
@@ -94,7 +95,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
     }
 
     pid_t cpid;                      /* child pid */
-    char *exec_argv[ARGSLIMIT] = {}; /* execute arguments */
+    char *exec_argv[ARGSLIMIT] = {0}; /* execute arguments */
     bool isForkErr = false;          /* check if fork error occurred */
 
     switch (cpid = fork()) {
@@ -105,7 +106,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         exec_argv[0] = cmd_token;
         /* extract arguments of command */
         for (int j = 1;
-             (cmd_token = strtok_r(cmd_rest, " \r\n", &cmd_rest)) != NULL; j++) {
+             (cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest)) != NULL; j++) {
             exec_argv[j] = cmd_token;
         }
         /* I/O Processing */
@@ -113,6 +114,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         if (pipe_arr[0].isValid) {
             debug("replace STDIN\n");
             dup2(pipe_arr[0].pipefd[0], STDIN_FILENO);
+            close(pipe_arr[0].pipefd[0]);
             close(pipe_arr[0].pipefd[1]);
         }
 
@@ -121,15 +123,18 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             debug("child cmd_arg.isPipe\n");
             dup2(pipefd_rhs[1], STDOUT_FILENO);
             close(pipefd_rhs[0]);
+            close(pipefd_rhs[1]);
         } else if (cmd_arg.isNumPipe) {
             debug("child cmd_arg.isNumPipe\n");
             dup2(pipe_arr[cmd_arg.numPipeLen].pipefd[1], STDOUT_FILENO);
             close(pipe_arr[cmd_arg.numPipeLen].pipefd[0]);
+            close(pipe_arr[cmd_arg.numPipeLen].pipefd[1]);
         } else if (cmd_arg.isErrPipe) {
             debug("child cmd_arg.isErrPipe\n");
             dup2(pipe_arr[cmd_arg.numPipeLen].pipefd[1], STDOUT_FILENO);
             dup2(pipe_arr[cmd_arg.numPipeLen].pipefd[1], STDERR_FILENO);
             close(pipe_arr[cmd_arg.numPipeLen].pipefd[0]);
+            close(pipe_arr[cmd_arg.numPipeLen].pipefd[1]);
         } else if (cmd_arg.isFileRedirect) {
             debug("child cmd_arg.isFileRedirect: %s\n", cmd_arg.filename);
             freopen(cmd_arg.filename, "w+", stdout);
@@ -147,8 +152,8 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         if (execvp(exec_argv[0], exec_argv) == -1) {
             char unknown_cmd[CMDSIZE] = "Unknown command: [";
             strncat(unknown_cmd, exec_argv[0], strlen(exec_argv[0]));
-            strcat(unknown_cmd, "].\n");
-            write(STDERR_FILENO, unknown_cmd, strlen(unknown_cmd));
+            strcat(unknown_cmd, "].");
+            fprintf(stderr, "%s\n", unknown_cmd);
         }
         debug("after execvp, Unknown command;\n");
         exit(EXIT_SUCCESS);
@@ -169,10 +174,9 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             pipe_arr[0].pipefd[1] = pipefd_rhs[1];
         }
 
-        /* The last command in a line, and wait all previous commands finished. */
         /* Only wait the visible command situations (influencing the prompt) */
         if (cmd_arg.isFileRedirect || !(cmd_arg.isNumPipe || cmd_arg.isErrPipe || cmd_arg.isPipe)) {
-            debug("Last command\n");
+            debug("Wait this command\n");
             while (waitpid(-1, NULL, WNOHANG) >= 0)
                 ;
         }
@@ -181,14 +185,15 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
     debug("End of exec Func\n");
     /* re-fork */
     if (isForkErr) {
+        debug("isForkErr\n");
         usleep(1000);
         /* close new pipe */
         if (isNewPipe) {
             close(pipefd_rhs[0]);
             close(pipefd_rhs[1]);
             if (cmd_arg.isNumPipe || cmd_arg.isErrPipe) {
-                // close(pipefd_rhs[0]);
-                // close(pipefd_rhs[1]);
+                close(pipefd_rhs[0]);
+                close(pipefd_rhs[1]);
                 pipe_arr[cmd_arg.numPipeLen].isValid = false;
             }
         }
@@ -214,24 +219,19 @@ void npshell()
     struct sigaction sa;
     sa.sa_handler = child_handler;
     sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
+    sa.sa_flags = SA_RESTART;
     sigaction(SIGCHLD, &sa, NULL);
 
-    char *read_buf = NULL; /* read buffer */
-    size_t read_len = 0;   /* record read buffer length */
+    char *read_buf = 0;      /* read buffer */
+    size_t read_len = 0; /* record read buffer length */
     /* loop for each line */
     while (1) {
-        read_buf = NULL;
         read_len = 0;
         /* print prompt */
-        write(STDOUT_FILENO, "\% ", strlen("\% "));
+        printf("%% ");
+        fflush(stdout);
         if (getline(&read_buf, &read_len, stdin) < 0) {
             debug("getline < 0\n");
-            if (errno == EINVAL) {
-                printf("EINVAL\n");
-            } else if (errno == ENOMEM) {
-                printf("ENOMEM\n");
-            }
             break;
         }
 
@@ -242,18 +242,19 @@ void npshell()
         /* loop for each command*/
         while (read_rest[0] != '\0') {
             /* The following variables will be reset each command*/
-            char command[CMDSIZE] = "";
+            char command[CMDSIZE] = {0};
             struct cmd_arg cmd_arg = {0}; /* args for execution commands */
 
             /* extract a command */
             /* record different options */
-            while ((read_token = strtok_r(read_rest, " \r\n", &read_rest)) != NULL) {
+            while ((read_token = strtok_r(read_rest, " \n", &read_rest)) != NULL) {
                 if (strncmp(read_token, "|", strlen(read_token)) == 0) {
+                    debug("read_token: %s\n", read_token);
                     cmd_arg.isPipe = true;
                     break;
                 } else if (strncmp(read_token, ">", strlen(read_token)) == 0) {
                     cmd_arg.isFileRedirect = true;
-                    read_token = strtok_r(read_rest, " \r\n", &read_rest);
+                    read_token = strtok_r(read_rest, " \n", &read_rest);
                     strncpy(cmd_arg.filename, read_token, strlen(read_token));
                     break;
                 } else if (read_token[0] == '|') {
@@ -279,7 +280,7 @@ void npshell()
             /* prevent empty command */
             if (command[0] != '\0') {
                 numOfCmd++; /* record how many command in this line */
-                cmd_token = strtok_r(cmd_rest, " \r\n", &cmd_rest);
+                cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest);
 
                 /* built-in command */
                 if (strncmp(cmd_token, "setenv", strlen("setenv")) == 0) {
@@ -300,13 +301,5 @@ void npshell()
             memmove(pipe_arr, pipe_arr + 1, sizeof(struct pipe_unit) * 1002);
             debug("--------A read line---------%ld\n", numOfCmd);
         }
-        if (read_buf)
-            free(read_buf);
     }
 }
-
-// int main(int argc, char **argv)
-// {
-//     npshell();
-//     return 0;
-// }

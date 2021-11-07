@@ -5,3 +5,4 @@ npshell
 *.txt
 
 np_simple
+np_single_proc
