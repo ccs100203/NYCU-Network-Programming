@@ -9,7 +9,7 @@ all: $(BINS)
 np_simple: server1/np_simple.c server1/npshell.c
 	$(CC) $(CFLAGS) -o $@ $^
 
-np_single_proc: server2/np_single_proc.c
+np_single_proc: server2/np_single_proc.c server2/npshell.c
 	$(CC) $(CFLAGS) -o $@ $^
 
 debug: CFLAGS += -D DEBUG
