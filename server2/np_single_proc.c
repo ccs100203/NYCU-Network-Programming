@@ -51,7 +51,7 @@ int main(int argc, char **argv)
 
     /* create epoll */
     int epollfd;
-    struct epoll_event ev, events[MAX_EVENTS];
+    struct epoll_event ev, events[MAX_EVENTS+5];
     
     if ((epollfd = epoll_create1(0)) == -1) {
         perror("epoll_create1");
@@ -72,17 +72,14 @@ int main(int argc, char **argv)
     }
 
     while (1) {
-        // int nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
         int nfds = 0;
         do {
-            nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
+            nfds = epoll_wait(epollfd, events, MAX_EVENTS+5, -1);
         } while (nfds < 0 && errno == EINTR);
+        if(nfds < 0)
+            printf("errno: %d\n", errno);
 
-        // if (nfds == -1) {
-        //     perror("epoll_wait");
-        //     exit(EXIT_FAILURE);
-        // }
-        printf("--------------after epoll_wait\n");
+        // printf("--------------after epoll_wait\n");
 
         for (int n = 0; n < nfds; ++n) {
             /* server */
@@ -91,7 +88,7 @@ int main(int argc, char **argv)
                 socklen_t addrlen = sizeof(clientAddr);
 
                 int clientfd = accept(servfd, (struct sockaddr *) &clientAddr, &addrlen);
-                printf("accept fd: %d\n", clientfd);
+                // printf("accept fd: %d\n", clientfd);
                 if (clientfd == -1) {
                     perror("accept");
                     exit(EXIT_FAILURE);
@@ -102,7 +99,7 @@ int main(int argc, char **argv)
                 inet_ntop(AF_INET, &clientAddr.sin_addr, ip_tmp, INET_ADDRSTRLEN);
                 debug("ip: %s\n", ip_tmp);
 
-                struct client_unit tmp = {true, "(no name)", clientfd, clientAddr.sin_port, ""};
+                struct client_unit tmp = {true, "(no name)", clientfd, ntohs(clientAddr.sin_port), ""};
                 strncpy(tmp.ip, ip_tmp, strlen(ip_tmp));
                 for(int i = 0; i < MAX_ENV; ++i)
                     tmp.env[i].isValid = false;
@@ -117,10 +114,12 @@ int main(int argc, char **argv)
                     if(!client_arr[i].isValid) {
                         uid = i;
                         client_arr[i] = tmp;
-                        printf("Add client into uid: %d\n", i);
+                        // printf("Add client into uid: %d\n", i);
                         break;
                     }
                 }
+                dprintf(stdiofd[1], "User: %d enter \n", uid+1);
+
 
                 /* send welcome message */
                 welcome(clientfd);
@@ -144,14 +143,13 @@ int main(int argc, char **argv)
             } /* client */
             else {
                 currfd = events[n].data.fd;
-
                 for(int i = 0; i < MAX_CLIENT; i++) {
                     if(client_arr[i].isValid && client_arr[i].sockfd == currfd) {
                         uid = i;
                         break;
                     }
                 }
-                printf("UID: %d, currfd: %d\n", uid, currfd);
+                // printf("UID: %d, currfd: %d\n", uid, currfd);
 
                 /* redirect IO to socket */
                 for (int i = 0; i < 3; ++i) {
@@ -160,18 +158,29 @@ int main(int argc, char **argv)
                 /* run np shell */
                 if(npshell() == 1) {
                     /* exit */
-                    // broadcast exit msg
-
-                    /* close client_arr */
+                    dprintf(stdiofd[1], "User: %d exit \n", uid+1);
+                    /* close client's client_arr */
                     client_arr[uid].isValid = false;
 
-                    /* close pipe_arr */
+                    /* close client's pipe_arr */
                     for (int i = 0; i < 1003; ++i) {
                         if(pipe_arr[uid][i].isValid) {
                             pipe_arr[uid][i].isValid = false;
                             close(pipe_arr[uid][i].pipefd[0]);
                             close(pipe_arr[uid][i].pipefd[1]);
                         }
+                    }
+
+                    /* close client's user pipe arr */
+                    for (int i = 0; i < MAX_CLIENT; ++i) {
+                        usr_pipe_arr[i][uid].isValid = false;
+                        close(usr_pipe_arr[i][uid].pipefd[0]);
+                        close(usr_pipe_arr[i][uid].pipefd[1]);
+                    }
+                    for (int i = 0; i < MAX_CLIENT; ++i) {
+                        usr_pipe_arr[uid][i].isValid = false;
+                        close(usr_pipe_arr[uid][i].pipefd[0]);
+                        close(usr_pipe_arr[uid][i].pipefd[1]);
                     }
                     
                     /* Delete client fd from epoll list */
@@ -194,8 +203,6 @@ int main(int argc, char **argv)
                 for (int i = 0; i < 3; ++i) {
                     dup2(stdiofd[i], i);
                 }
-
-
             }
         }
     }

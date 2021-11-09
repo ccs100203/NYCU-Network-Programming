@@ -26,6 +26,8 @@ struct client_unit {
     struct env_unit env[MAX_ENV];
 };
 
+void broadcast(char *msg);
+
 /* The following array use `uid` as index */
 extern struct client_unit client_arr[MAX_CLIENT + 1];
 extern int currfd; /* record current client fd */
