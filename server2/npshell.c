@@ -11,7 +11,6 @@ struct usrpipe_unit usr_pipe_arr[MAX_CLIENT][MAX_CLIENT] = {0}; /* record user p
 /* Built-in Commands */
 void built_in(char *cmd_token, char *cmd_rest, char flag)
 {
-    // char *buf = 0;                      /* output buffer */
     struct built_in_arg arg = {"", ""}; /* args for built-in commands */
     switch (flag) {
     /* setenv */
@@ -21,25 +20,23 @@ void built_in(char *cmd_token, char *cmd_rest, char flag)
         strncpy(arg.name, cmd_token, strlen(cmd_token));
         cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest);
         strncpy(arg.value, cmd_token, strlen(cmd_token));
-        // printf("name: %s, %s\n", arg.name, arg.value);
-        // if (setenv(arg.name, arg.value, 1) == -1) {
-        //     perror("setenv\n");
-        // }
         /* update client environment variable */
         int n = 0, flip = 1;
         for (int i = 0; i < MAX_ENV; ++i) {
+            /* if exists same env, update */
             if (client_arr[uid].env[i].isValid && 
                 strncmp(client_arr[uid].env[i].key, arg.name, strlen(client_arr[uid].env[i].key)) == 0 ) {
                 memset(client_arr[uid].env[i].val, 0, ENVSIZE);
                 strncpy(client_arr[uid].env[i].val, arg.value, strlen(arg.value));
                 return;
             }
+            /* if don't exist same env, insert one */
             if (flip && !client_arr[uid].env[i].isValid) {
                 n = i;
                 flip = 0;
             }
-                
         }
+        /* insert new env */
         client_arr[uid].env[n].isValid = true;
         memset(client_arr[uid].env[n].key, 0, ENVSIZE);
         memset(client_arr[uid].env[n].val, 0, ENVSIZE);
@@ -175,7 +172,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             sprintf(buf, "*** Error: user #%ld does not exist yet. ***\n", cmd_arg.recvUId+1);
             printf("%s", buf);
             isRecvErr = true;
-        } /* if pipe exists, success */
+        } /* if pipe exists, success recv */
         else if(usr_pipe_arr[cmd_arg.recvUId][uid].isValid) {
             char buf[MAX_LINE + 200] = "";
             sprintf(buf, "*** %s (#%d) just received from %s (#%ld) by '%s' ***\n", 
@@ -184,7 +181,6 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             broadcast(buf);
         } /* user exists, but pipe doesn't exist */ 
         else if (client_arr[cmd_arg.recvUId].isValid) {
-            // cmd_arg.isRecvUsrPipe = false;
             char buf[MAX_LINE] = "";
             sprintf(buf, "*** Error: the pipe #%ld->#%d does not exist yet. ***\n", 
                     cmd_arg.recvUId+1, uid+1);
@@ -233,6 +229,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             usr_pipe_arr[uid][cmd_arg.sendUId].pipefd[1] = pipefd_rhs[1];
         }
     }
+    fflush(stdout);
 
     pid_t cpid;                         /* child pid */
     char *exec_argv[ARGSLIMIT] = {0};   /* execute arguments */
@@ -260,7 +257,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         else if (isRecvErr) {
             int nullfd = open("/dev/null", O_RDONLY, 0);
             dup2(nullfd, STDIN_FILENO);
-            close(nullfd); // TODO
+            close(nullfd);
         } else if (cmd_arg.isRecvUsrPipe) {
             debug("replace STDIN\n");
             dup2(usr_pipe_arr[cmd_arg.recvUId][uid].pipefd[0], STDIN_FILENO);
@@ -292,7 +289,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         else if (isSendErr) {
             int nullfd = open("/dev/null", O_WRONLY, 0);
             dup2(nullfd, STDOUT_FILENO);
-            close(nullfd); // TODO
+            close(nullfd);
         } else if (cmd_arg.isSendUsrPipe) {
             debug("child cmd_arg.isSendUsrPipe\n");
             dup2(usr_pipe_arr[uid][cmd_arg.sendUId].pipefd[1], STDOUT_FILENO);
@@ -302,7 +299,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
 
         /* close useless numbered pipes */
         for (int i = 1; i < 1002; i++) {
-            if (pipe_arr[uid][i].isValid) {  //  && (i != cmd_arg.numPipeLen)
+            if (pipe_arr[uid][i].isValid) {
                 close(pipe_arr[uid][i].pipefd[0]);
                 close(pipe_arr[uid][i].pipefd[1]);
             }
@@ -315,6 +312,11 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
                     close(usr_pipe_arr[i][j].pipefd[1]);
                 }
             }
+        }
+
+        /* close useless backup fd */
+        for (int i = 0; i < 3; ++i) {
+            close(stdiofd[i]);
         }
 
         /* execute command */
@@ -351,7 +353,8 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         }
 
         /* Only wait the visible command situations (influencing the prompt) */
-        if (cmd_arg.isFileRedirect || !(cmd_arg.isNumPipe || cmd_arg.isErrPipe || cmd_arg.isPipe)) {
+        if (!(cmd_arg.isNumPipe || cmd_arg.isErrPipe || cmd_arg.isPipe
+                || (cmd_arg.isSendUsrPipe && !isSendErr))) {
             debug("Wait this command\n");
             while (waitpid(-1, NULL, WNOHANG) >= 0)
                 ;
@@ -369,6 +372,9 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             close(pipefd_rhs[1]);
             if (cmd_arg.isNumPipe || cmd_arg.isErrPipe) {
                 pipe_arr[uid][cmd_arg.numPipeLen].isValid = false;
+            }
+            if (cmd_arg.isSendUsrPipe) {
+                usr_pipe_arr[uid][cmd_arg.sendUId].isValid = false;
             }
         }
         /* redo this function */
@@ -389,7 +395,6 @@ int npshell()
     for (int i = 0; i < MAX_ENV; ++i) {
         if (client_arr[uid].env[i].isValid) {
             setenv(client_arr[uid].env[i].key, client_arr[uid].env[i].val, 1);
-            // printf("initenv: %s, %s\n", client_arr[uid].env[i].key, client_arr[uid].env[i].val);
         }
     }
 
@@ -402,8 +407,7 @@ int npshell()
 
     char read_buf[MAX_LINE] = ""; /* read buffer */
     recv(currfd, read_buf, MAX_LINE, 0);
-    debug("-------------After getline\n");
-    // printf("%s\n", read_buf);
+    debug("After recv a command line\n");
 
     /* The following variables will be reset each read line*/
     char *read_token = ""; /* record readline token for split */
@@ -418,8 +422,9 @@ int npshell()
         /* extract a command */
         /* record different options */
         while ((read_token = strtok_r(read_rest, " \r\n", &read_rest)) != NULL) {
-            /* yell & tell */
-            if(strcmp(read_token, "yell") == 0 || strcmp(read_token, "tell") == 0) {
+            /* yell & tell & name */
+            if(strcmp(read_token, "yell") == 0 || strcmp(read_token, "tell") == 0
+                 || strcmp(read_token, "name") == 0) {
                 strcpy(command, read_token);
                 strcat(command, " ");
                 while ((read_token = strtok_r(read_rest, "\r\n", &read_rest)) != NULL)
@@ -433,7 +438,6 @@ int npshell()
                 cmd_arg.isPipe = true;
                 break;
             } else if (strncmp(read_token, ">", strlen(read_token)) == 0) {
-                // printf("isFileRedirect = true;\n");
                 cmd_arg.isFileRedirect = true;
                 read_token = strtok_r(read_rest, " \r\n", &read_rest);
                 strncpy(cmd_arg.filename, read_token, strlen(read_token));
@@ -447,15 +451,11 @@ int npshell()
                 cmd_arg.numPipeLen = strtol(read_token + 1, NULL, 10);
                 break;
             } else if (read_token[0] == '>') {
-                // printf("isSendUsrPipe = true;\n");
                 cmd_arg.isSendUsrPipe = true;
                 cmd_arg.sendUId = strtol(read_token + 1, NULL, 10) - 1;
-                // break;
             } else if (read_token[0] == '<') {
                 cmd_arg.isRecvUsrPipe = true;
                 cmd_arg.recvUId = strtol(read_token + 1, NULL, 10) - 1;
-                // printf("isRecvUsrPipe = true;\n");
-                // break;
             } else {
                 strncat(command, read_token, strlen(read_token));
                 strcat(command, " ");
@@ -464,16 +464,20 @@ int npshell()
         /* strip the last space */
         command[strlen(command) - 1] = (command[strlen(command) - 1] == ' ') ? '\0' : command[strlen(command) - 1];
         debug("command: %s len: %ld\n", command, strlen(command));
-        // printf("command: %s len: %ld\n", command, strlen(command));
 
+        char* unused = "";
+        char* tmp_read = strtok_r(read_buf, "\r\n", &unused);
         /* save this command line into send user pipe arr */
-        if (cmd_arg.isSendUsrPipe && !usr_pipe_arr[uid][cmd_arg.sendUId].isValid) {
+        if (cmd_arg.isSendUsrPipe && cmd_arg.sendUId < MAX_CLIENT 
+            && !usr_pipe_arr[uid][cmd_arg.sendUId].isValid && client_arr[cmd_arg.sendUId].isValid) {
             memset(usr_pipe_arr[uid][cmd_arg.sendUId].cmd, 0, MAX_LINE);
-            strncpy(usr_pipe_arr[uid][cmd_arg.sendUId].cmd, read_buf, strlen(read_buf)-1);
+            strncpy(usr_pipe_arr[uid][cmd_arg.sendUId].cmd, tmp_read, strlen(tmp_read));
         }
-        if (cmd_arg.isRecvUsrPipe && usr_pipe_arr[cmd_arg.recvUId][uid].isValid) {
+        /* save this command line into recv user pipe arr */
+        if (cmd_arg.isRecvUsrPipe && cmd_arg.recvUId < MAX_CLIENT 
+            && usr_pipe_arr[cmd_arg.recvUId][uid].isValid) {
             memset(usr_pipe_arr[cmd_arg.recvUId][uid].cmd, 0, MAX_LINE);
-            strncpy(usr_pipe_arr[cmd_arg.recvUId][uid].cmd, read_buf, strlen(read_buf)-1);
+            strncpy(usr_pipe_arr[cmd_arg.recvUId][uid].cmd, tmp_read, strlen(tmp_read));
         }
 
         /* check and execute a command*/
@@ -490,8 +494,6 @@ int npshell()
             } else if (strncmp(cmd_token, "printenv", strlen("printenv")) == 0) {
                 built_in(cmd_token, cmd_rest, 'p');
             } else if (strncmp(cmd_token, "exit", strlen("exit")) == 0) {
-                // built_in(cmd_token, cmd_rest, 'e');
-                while (waitpid(-1, NULL, WNOHANG) >= 0);
                 return 1;
             } else if (strncmp(cmd_token, "who", strlen("who")) == 0) {
                 built_in(cmd_token, cmd_rest, 'w');

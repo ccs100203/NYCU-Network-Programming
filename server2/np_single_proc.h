@@ -5,7 +5,7 @@
 #include <sys/epoll.h>
 #include <arpa/inet.h>
 
-#define MAX_EVENTS 31   /* max epoll event */
+#define MAX_EVENTS 10   /* max epoll simultaneous event */
 #define MAX_NAME 25     /* max user name */
 #define MAX_ENV  25     /* max environment number */
 #define ENVSIZE 150     /* max env length */

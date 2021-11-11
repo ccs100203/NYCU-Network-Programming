@@ -247,14 +247,14 @@ void npshell()
 
             /* extract a command */
             /* record different options */
-            while ((read_token = strtok_r(read_rest, " \n", &read_rest)) != NULL) {
+            while ((read_token = strtok_r(read_rest, " \r\n", &read_rest)) != NULL) {
                 if (strncmp(read_token, "|", strlen(read_token)) == 0) {
                     debug("read_token: %s\n", read_token);
                     cmd_arg.isPipe = true;
                     break;
                 } else if (strncmp(read_token, ">", strlen(read_token)) == 0) {
                     cmd_arg.isFileRedirect = true;
-                    read_token = strtok_r(read_rest, " \n", &read_rest);
+                    read_token = strtok_r(read_rest, " \r\n", &read_rest);
                     strncpy(cmd_arg.filename, read_token, strlen(read_token));
                     break;
                 } else if (read_token[0] == '|') {
