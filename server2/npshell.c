@@ -1,12 +1,8 @@
 #include "npshell.h"
 #include "np_single_proc.h"
 
-/* TODO: CHECK EVERY STRING WHICH HAVE TO MEMSET 0 */
-/* TODO: more than 30 client not handle */
-
 struct pipe_unit pipe_arr[MAX_CLIENT][1010] = {0}; /* record number pipe */
 struct usrpipe_unit usr_pipe_arr[MAX_CLIENT][MAX_CLIENT] = {0}; /* record user pipe */
-
 
 /* Built-in Commands */
 void built_in(char *cmd_token, char *cmd_rest, char flag)

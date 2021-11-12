@@ -26,7 +26,6 @@
 struct built_in_arg {
     char name[PATHSIZE];
     char value[PATHSIZE];
-    // char msg[MSGSIZE];
 };
 
 struct cmd_arg {
