@@ -40,6 +40,8 @@ void server_handler(int signum)
 {
     /* interrupt, server terminated */
     if (signum == SIGINT) {
+        while (waitpid(-1, NULL, WNOHANG) > 0) // TODO
+        ;
         for (int i = 0; i < MAX_CLIENT; ++i) {
             if (client_arr[i].isValid)
                 sem_destroy(&client_arr[i].sem);
@@ -47,13 +49,16 @@ void server_handler(int signum)
         sem_destroy(&broadcast_region->sem);
         shm_unlink("user_info");
         shm_unlink("broadcast");
-        printf("SIGINT\n");
+        for (int i = 0; i < MAX_CLIENT; ++i) {
+            char path_user_pipe[20] = "";
+            sprintf(path_user_pipe, "user_pipe_%d", i);
+            shm_unlink(path_user_pipe);
+        }
         exit(EXIT_SUCCESS);
     } /* child terminated */
     else if (signum == SIGCHLD) {
         while (waitpid(-1, NULL, WNOHANG) > 0)
-        ;
-        printf("SIGCHID\n");
+            ;
     }
 }
 
@@ -63,8 +68,18 @@ void client_handler(int signum)
     if (signum == SIGUSR1) {
         printf("%s", broadcast_region->msg);
         fflush(stdout);
-    } else if (signum == SIGUSR2) {
-
+    } /* open readside fd */
+    else if (signum == SIGUSR2) {
+        // dprintf(stdiofd[1], "uid %d, %x\n", uid, client_arr[uid].who_send_mask);
+        unsigned int i = __builtin_ffs(client_arr[uid].who_send_mask) - 1;
+        // dprintf(stdiofd[1], "FFS-1: %u\n", i);
+        client_arr[uid].who_send_mask = 0;
+        if (readfd_arr[i] != -1) {
+            close(readfd_arr[i]);
+        }
+        char path_fifo[20] = "";
+        sprintf(path_fifo, "user_pipe/%u__%d", i, uid);
+        readfd_arr[i] = open(path_fifo, O_RDONLY, 0);
     }
 }
 
@@ -93,6 +108,7 @@ void create_shm_user_info()
         client_arr[i].port = -1;
         client_arr[i].pid = -1;
         strcpy(client_arr[i].ip, "");
+        client_arr[i].who_send_mask = 0;
     }
 }
 
@@ -117,6 +133,34 @@ void create_shm_broadcast()
     strcpy(broadcast_region->msg, "");
     if (sem_init(&broadcast_region->sem, 1, 1) == -1)
         perror("sem_init");
+}
+
+/* create user pipe share memory */
+void create_shm_user_pipe()
+{
+    for (int i = 0; i < MAX_CLIENT; ++i) {
+        char path_user_pipe[20] = "";
+        sprintf(path_user_pipe, "user_pipe_%d", i);
+        int user_pipefd = shm_open(path_user_pipe, O_CREAT | O_RDWR, 0666);
+        if (user_pipefd == -1)
+            perror("shm_open user_pipe");
+
+        if (ftruncate(user_pipefd, sizeof(struct usrpipe_unit) * MAX_CLIENT) == -1)
+            perror("ftruncate");
+
+        usr_pipe_arr[i] = mmap(NULL, sizeof(struct usrpipe_unit) * MAX_CLIENT,
+                    PROT_READ | PROT_WRITE, MAP_SHARED, user_pipefd, 0);
+
+        if (usr_pipe_arr[i] == MAP_FAILED)
+            perror("mmap");
+
+        /* initialization */
+        for (int j = 0; j < MAX_CLIENT; ++j) { 
+            /* i: send  --->  i: recv */
+            usr_pipe_arr[i][j].isValid = false;
+            strcpy(usr_pipe_arr[i][j].cmd, "");
+        }
+    }
 }
 
 int main(int argc, char **argv)
@@ -164,6 +208,11 @@ int main(int argc, char **argv)
 
     /* create broadcast share memory */
     create_shm_broadcast();
+
+    /* create user pipe share memory */
+    create_shm_user_pipe();
+
+    // printf("server %d, %d, getpgrp %d\n", getpid(), getppid(), getpgrp());
     
     while (1) {
         struct sockaddr_in clientAddr;
@@ -213,6 +262,7 @@ int main(int argc, char **argv)
             sigemptyset(&sa.sa_mask);
             sa2.sa_flags = SA_RESTART;
             sigaction(SIGUSR1, &sa2, NULL);
+            sigaction(SIGUSR2, &sa2, NULL);
 
             debug("clientfd %d\n", clientfd);
             /* redirect stdio */
@@ -258,7 +308,30 @@ int main(int argc, char **argv)
                 }
                 
                 /* close client's user pipe arr */
-                // TODO
+                for (int i = 0; i < MAX_CLIENT; ++i) {
+                    if (usr_pipe_arr[i][uid].isValid) {
+                        usr_pipe_arr[i][uid].isValid = false;
+                        memset(usr_pipe_arr[i][uid].cmd, 0, MAX_LINE);
+                    }
+                    char path_fifo[20] = "";
+                    sprintf(path_fifo, "user_pipe/%d__%d", i, uid);
+                    unlink(path_fifo);
+                }
+                for (int i = 0; i < MAX_CLIENT; ++i) {
+                    if (usr_pipe_arr[uid][i].isValid) {
+                        usr_pipe_arr[uid][i].isValid = false;
+                        memset(usr_pipe_arr[uid][i].cmd, 0, MAX_LINE);
+                    }
+                    char path_fifo[20] = "";
+                    sprintf(path_fifo, "user_pipe/%d__%d", uid, i);
+                    unlink(path_fifo);
+                }
+
+                /* close readfd_arr */
+                for (int i = 0; i < MAX_CLIENT; ++i) {
+                    if (readfd_arr[i] != -1)
+                        close(readfd_arr[i]);
+                }
 
                 exit(EXIT_SUCCESS);
             } else {
@@ -273,7 +346,7 @@ int main(int argc, char **argv)
             client_arr[uid].pid = cpid;
             /* notify child broadcast login message */
             sem_post(&client_arr[uid].sem);
-            printf("parent uid: %d, pid %d\n", uid, client_arr[uid].pid);
+            // printf("parent uid: %d, pid %d\n", uid, client_arr[uid].pid);
             break;
         }
     }

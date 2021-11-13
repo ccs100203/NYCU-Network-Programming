@@ -1,12 +1,9 @@
 #include "npshell.h"
 #include "np_multi_proc.h"
 
-/* TODO: CHECK EVERY STRING WHICH HAVE TO MEMSET 0 */
-/* TODO: more than 30 client not handle */
-
 struct pipe_unit pipe_arr[1010] = {0}; /* record number pipe */
-struct usrpipe_unit usr_pipe_arr[MAX_CLIENT][MAX_CLIENT] = {0}; /* record user pipe */
-
+struct usrpipe_unit *usr_pipe_arr[MAX_CLIENT] = {0}; /* record user pipe */
+int readfd_arr[MAX_CLIENT] = {0}; /* record read side user_pipe */
 
 /* Built-in Commands */
 void built_in(char *cmd_token, char *cmd_rest, char flag)
@@ -84,7 +81,6 @@ void built_in(char *cmd_token, char *cmd_rest, char flag)
         if(client_arr[recv_id].isValid) {
             char buf[MSGSIZE] = "";
             sprintf(buf, "*** %s told you ***: %s\n", client_arr[uid].name, cmd_rest);
-            // send(client_arr[recv_id].sockfd, buf, strlen(buf), 0);
             unicast(buf, client_arr[recv_id].pid);
         } else {
             printf("*** Error: user #%ld does not exist yet. ***\n", recv_id + 1);
@@ -177,6 +173,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             isRecvErr = true;
         }
     }
+    usleep(1000);
 
     /* check if Send user pipe is valid */
     bool isSendErr = false; /* is send user pipe is correct */
@@ -194,22 +191,20 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
                     uid+1, cmd_arg.sendUId+1);
             printf("%s", buf);
             isSendErr = true;
-        } /* user exists, but pipe doesn't exist, success send*/
+        } /* user exists, but pipe doesn't exist, success send */
         else {
             char buf[MAX_LINE + 200] = "";
             sprintf(buf, "*** %s (#%d) just piped '%s' to %s (#%ld) ***\n", 
                     client_arr[uid].name, uid+1, usr_pipe_arr[uid][cmd_arg.sendUId].cmd,
                     client_arr[cmd_arg.sendUId].name, cmd_arg.sendUId+1);
             broadcast(buf);
-            /* create pipe */
-            if (pipe(pipefd_rhs) == -1) {
-                perror("pipe rhs error");
-                exit(EXIT_FAILURE);
-            }
-            isNewPipe = true;
+            // isNewPipe = true;
             usr_pipe_arr[uid][cmd_arg.sendUId].isValid = true;
-            usr_pipe_arr[uid][cmd_arg.sendUId].pipefd[0] = pipefd_rhs[0];
-            usr_pipe_arr[uid][cmd_arg.sendUId].pipefd[1] = pipefd_rhs[1];
+            /* create fifo for valid userpipe send */
+            char path_fifo[20] = "";
+            sprintf(path_fifo, "user_pipe/%d__%ld", uid, cmd_arg.sendUId);
+            unlink(path_fifo);
+            mkfifo(path_fifo, 0666);
         }
     }
     fflush(stdout);
@@ -218,17 +213,27 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
     char *exec_argv[ARGSLIMIT] = {0};   /* execute arguments */
     bool isForkErr = false;             /* check if fork error occurred */
 
-    switch (cpid = fork()) {
+    switch ((cpid = fork())) {
     case -1: /* fork error, reach process max limit, it will re-fork later */
         isForkErr = true;
         break;
     case 0: /* child */
+    {
         exec_argv[0] = cmd_token;
         /* extract arguments of command */
         for (int j = 1;
              (cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest)) != NULL; j++) {
             exec_argv[j] = cmd_token;
         }
+        /* create fifo for valid userpipe send */
+        // if (cmd_arg.isSendUsrPipe && !isSendErr) {
+        //     char path_fifo[20] = "";
+        //     sprintf(path_fifo, "user_pipe/%d__%ld", uid, cmd_arg.sendUId);
+        //     unlink(path_fifo);
+        //     mkfifo(path_fifo, 0666);
+        // }
+        // dprintf(stdiofd[1], "child %d, %d, getpgrp %d\n", getpid(), getppid(), getpgrp());
+
         /* I/O Processing */
         /* replace STDIN */
         if (pipe_arr[0].isValid) {
@@ -243,9 +248,12 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             close(nullfd);
         } else if (cmd_arg.isRecvUsrPipe) {
             debug("replace STDIN\n");
-            dup2(usr_pipe_arr[cmd_arg.recvUId][uid].pipefd[0], STDIN_FILENO);
-            close(usr_pipe_arr[cmd_arg.recvUId][uid].pipefd[0]);
-            close(usr_pipe_arr[cmd_arg.recvUId][uid].pipefd[1]);
+            // char path_fifo[20] = "";
+            // sprintf(path_fifo, "user_pipe/%ld__%d", cmd_arg.recvUId, uid);
+            // int readfd = open(path_fifo, O_RDONLY, 0);
+            dup2(readfd_arr[cmd_arg.recvUId], STDIN_FILENO);
+            close(readfd_arr[cmd_arg.recvUId]);
+            readfd_arr[cmd_arg.recvUId] = -1;
         }
 
         /* replace STDOUT & STDERR */
@@ -275,9 +283,14 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             close(nullfd);
         } else if (cmd_arg.isSendUsrPipe) {
             debug("child cmd_arg.isSendUsrPipe\n");
-            dup2(usr_pipe_arr[uid][cmd_arg.sendUId].pipefd[1], STDOUT_FILENO);
-            close(usr_pipe_arr[uid][cmd_arg.sendUId].pipefd[0]);
-            close(usr_pipe_arr[uid][cmd_arg.sendUId].pipefd[1]);
+            char path_fifo[20] = "";
+            sprintf(path_fifo, "user_pipe/%d__%ld", uid, cmd_arg.sendUId);
+            client_arr[cmd_arg.sendUId].who_send_mask |= (1 << uid);
+            /* send a signal to receiver, make him open readside */
+            kill(client_arr[cmd_arg.sendUId].pid, SIGUSR2);
+            int writefd = open(path_fifo, O_WRONLY, 0);
+            dup2(writefd, STDOUT_FILENO);
+            close(writefd);
         }
 
         /* close useless numbered pipes */
@@ -285,15 +298,6 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             if (pipe_arr[i].isValid) {
                 close(pipe_arr[i].pipefd[0]);
                 close(pipe_arr[i].pipefd[1]);
-            }
-        }
-        /* close useless user pipes */
-        for (int i = 0; i < MAX_CLIENT; ++i) {
-            for (int j = 0; j < MAX_CLIENT; ++j) {
-                if(usr_pipe_arr[i][j].isValid) {
-                    close(usr_pipe_arr[i][j].pipefd[0]);
-                    close(usr_pipe_arr[i][j].pipefd[1]);
-                }
             }
         }
 
@@ -312,7 +316,9 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         debug("after execvp, Unknown command;\n");
         exit(EXIT_SUCCESS);
         break;
-    default: /* parent */
+    } /* parent */
+    default: 
+        // dprintf(stdiofd[1], "parent %d, %d, getpgrp %d\n", getpid(), getppid(), getpgrp());
         /* close useless input pipe */
         if (pipe_arr[0].isValid) {
             debug("parent isValid\n");
@@ -331,17 +337,19 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         /* close successful user pipe after recv */
         if(cmd_arg.isRecvUsrPipe && !isRecvErr) {
             usr_pipe_arr[cmd_arg.recvUId][uid].isValid = false;
-            close(usr_pipe_arr[cmd_arg.recvUId][uid].pipefd[0]);
-            close(usr_pipe_arr[cmd_arg.recvUId][uid].pipefd[1]);
+            // TODO unlink??
         }
 
         /* Only wait the visible command situations (influencing the prompt) */
         if (!(cmd_arg.isNumPipe || cmd_arg.isErrPipe || cmd_arg.isPipe
-                || (cmd_arg.isSendUsrPipe && !isSendErr))) {
+                || (cmd_arg.isSendUsrPipe))) {
             debug("Wait this command\n");
-            while (waitpid(-1, NULL, WNOHANG) >= 0)
-                ;
+            // dprintf(stdiofd[1], "HI INSIDE wait\n");
+            // while (waitpid(-1, NULL, WNOHANG) >= 0)
+            //     ;
+            waitpid(cpid, NULL, 0);
         }
+        // dprintf(stdiofd[1], "HI AFTER wait\n");
         break;
     }
     debug("End of exec Func\n");
@@ -373,7 +381,12 @@ void child_handler(int signum)
 
 int npshell()
 {
-    /* initial PATH is bin/ and ./ */
+    /* initialize readfd to -1 */
+    for (int i = 0; i < MAX_CLIENT; ++i) {
+        readfd_arr[i] = -1;
+    }
+
+    /* initialize PATH is bin/ and ./ */
     clearenv();
     if (setenv("PATH", "bin:.", 1) == -1) {
         perror("setenv\n");
@@ -453,6 +466,7 @@ int npshell()
             /* strip the last space */
             command[strlen(command) - 1] = (command[strlen(command) - 1] == ' ') ? '\0' : command[strlen(command) - 1];
             debug("command: %s len: %ld\n", command, strlen(command));
+            // dprintf(stdiofd[1], "command: %s len: %ld\n", command, strlen(command));
 
             char* unused = "";
             char* tmp_read = strtok_r(read_buf, "\r\n", &unused);

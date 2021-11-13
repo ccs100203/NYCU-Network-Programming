@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 
 #define PATHSIZE 200
 #define ARGSLIMIT 30
@@ -48,7 +49,6 @@ struct pipe_unit {
 
 struct usrpipe_unit {
     bool isValid;
-    int pipefd[2];
     char cmd[MAX_LINE];
 };
 
@@ -58,9 +58,9 @@ int npshell();
 
 /* The following array use `uid` as index */
 extern struct pipe_unit pipe_arr[1010]; /* record number pipe */
-                                        /* send  --->  recv */
-extern struct usrpipe_unit usr_pipe_arr[MAX_CLIENT][MAX_CLIENT]; /* record user pipe */
-
+                        /* send  --->  recv */
+extern struct usrpipe_unit *usr_pipe_arr[MAX_CLIENT]; /* record user pipe */
+extern int readfd_arr[MAX_CLIENT]; /* record read side user_pipe */
 
 #ifdef DEBUG
 #define debug(...)           \

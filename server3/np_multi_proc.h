@@ -29,6 +29,7 @@ struct client_unit {
     int port;
     pid_t pid;
     char ip[INET_ADDRSTRLEN + 5];
+    uint32_t who_send_mask; /* a bitmask for recording who is user_pipe sender */
 };
 
 struct broadcast_unit {
