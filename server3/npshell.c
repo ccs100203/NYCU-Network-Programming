@@ -337,12 +337,11 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         /* close successful user pipe after recv */
         if(cmd_arg.isRecvUsrPipe && !isRecvErr) {
             usr_pipe_arr[cmd_arg.recvUId][uid].isValid = false;
-            // TODO unlink??
         }
 
         /* Only wait the visible command situations (influencing the prompt) */
         if (!(cmd_arg.isNumPipe || cmd_arg.isErrPipe || cmd_arg.isPipe
-                || (cmd_arg.isSendUsrPipe))) {
+                || (cmd_arg.isSendUsrPipe && !isSendErr))) {
             debug("Wait this command\n");
             // dprintf(stdiofd[1], "HI INSIDE wait\n");
             // while (waitpid(-1, NULL, WNOHANG) >= 0)
