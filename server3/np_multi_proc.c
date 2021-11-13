@@ -70,9 +70,7 @@ void client_handler(int signum)
         fflush(stdout);
     } /* open readside fd */
     else if (signum == SIGUSR2) {
-        // dprintf(stdiofd[1], "uid %d, %x\n", uid, client_arr[uid].who_send_mask);
         unsigned int i = __builtin_ffs(client_arr[uid].who_send_mask) - 1;
-        // dprintf(stdiofd[1], "FFS-1: %u\n", i);
         client_arr[uid].who_send_mask = 0;
         if (readfd_arr[i] != -1) {
             close(readfd_arr[i]);
@@ -211,8 +209,6 @@ int main(int argc, char **argv)
 
     /* create user pipe share memory */
     create_shm_user_pipe();
-
-    // printf("server %d, %d, getpgrp %d\n", getpid(), getppid(), getpgrp());
     
     while (1) {
         struct sockaddr_in clientAddr;
@@ -346,7 +342,7 @@ int main(int argc, char **argv)
             client_arr[uid].pid = cpid;
             /* notify child broadcast login message */
             sem_post(&client_arr[uid].sem);
-            // printf("parent uid: %d, pid %d\n", uid, client_arr[uid].pid);
+            debug("parent uid: %d, pid %d\n", uid, client_arr[uid].pid);
             break;
         }
     }

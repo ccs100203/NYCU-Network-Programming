@@ -158,6 +158,7 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
                     client_arr[uid].name, uid+1, client_arr[cmd_arg.recvUId].name, 
                     cmd_arg.recvUId+1, usr_pipe_arr[cmd_arg.recvUId][uid].cmd);
             broadcast(buf);
+            usleep(5000);
         } /* user exists, but pipe doesn't exist */ 
         else if (client_arr[cmd_arg.recvUId].isValid) {
             char buf[MAX_LINE] = "";
@@ -173,7 +174,6 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             isRecvErr = true;
         }
     }
-    usleep(1000);
 
     /* check if Send user pipe is valid */
     bool isSendErr = false; /* is send user pipe is correct */
@@ -198,7 +198,6 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
                     client_arr[uid].name, uid+1, usr_pipe_arr[uid][cmd_arg.sendUId].cmd,
                     client_arr[cmd_arg.sendUId].name, cmd_arg.sendUId+1);
             broadcast(buf);
-            // isNewPipe = true;
             usr_pipe_arr[uid][cmd_arg.sendUId].isValid = true;
             /* create fifo for valid userpipe send */
             char path_fifo[20] = "";
@@ -225,14 +224,6 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
              (cmd_token = strtok_r(cmd_rest, " \n", &cmd_rest)) != NULL; j++) {
             exec_argv[j] = cmd_token;
         }
-        /* create fifo for valid userpipe send */
-        // if (cmd_arg.isSendUsrPipe && !isSendErr) {
-        //     char path_fifo[20] = "";
-        //     sprintf(path_fifo, "user_pipe/%d__%ld", uid, cmd_arg.sendUId);
-        //     unlink(path_fifo);
-        //     mkfifo(path_fifo, 0666);
-        // }
-        // dprintf(stdiofd[1], "child %d, %d, getpgrp %d\n", getpid(), getppid(), getpgrp());
 
         /* I/O Processing */
         /* replace STDIN */
@@ -248,9 +239,6 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             close(nullfd);
         } else if (cmd_arg.isRecvUsrPipe) {
             debug("replace STDIN\n");
-            // char path_fifo[20] = "";
-            // sprintf(path_fifo, "user_pipe/%ld__%d", cmd_arg.recvUId, uid);
-            // int readfd = open(path_fifo, O_RDONLY, 0);
             dup2(readfd_arr[cmd_arg.recvUId], STDIN_FILENO);
             close(readfd_arr[cmd_arg.recvUId]);
             readfd_arr[cmd_arg.recvUId] = -1;
@@ -318,7 +306,6 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         break;
     } /* parent */
     default: 
-        // dprintf(stdiofd[1], "parent %d, %d, getpgrp %d\n", getpid(), getppid(), getpgrp());
         /* close useless input pipe */
         if (pipe_arr[0].isValid) {
             debug("parent isValid\n");
@@ -343,12 +330,8 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
         if (!(cmd_arg.isNumPipe || cmd_arg.isErrPipe || cmd_arg.isPipe
                 || (cmd_arg.isSendUsrPipe && !isSendErr))) {
             debug("Wait this command\n");
-            // dprintf(stdiofd[1], "HI INSIDE wait\n");
-            // while (waitpid(-1, NULL, WNOHANG) >= 0)
-            //     ;
             waitpid(cpid, NULL, 0);
         }
-        // dprintf(stdiofd[1], "HI AFTER wait\n");
         break;
     }
     debug("End of exec Func\n");
@@ -363,9 +346,9 @@ void execCmd(char *cmd_token, char *cmd_rest, struct cmd_arg cmd_arg)
             if (cmd_arg.isNumPipe || cmd_arg.isErrPipe) {
                 pipe_arr[cmd_arg.numPipeLen].isValid = false;
             }
-            if (cmd_arg.isSendUsrPipe) {
-                usr_pipe_arr[uid][cmd_arg.sendUId].isValid = false;
-            }
+        }
+        if (cmd_arg.isSendUsrPipe && !isSendErr) {
+            usr_pipe_arr[uid][cmd_arg.sendUId].isValid = false;
         }
         /* redo this function */
         execCmd(cmd_token, cmd_rest, cmd_arg);
@@ -395,7 +378,6 @@ int npshell()
     struct sigaction sa;
     sa.sa_handler = child_handler;
     sigemptyset(&sa.sa_mask);
-    // sigfillset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
     sigaction(SIGCHLD, &sa, NULL);
 
@@ -406,7 +388,6 @@ int npshell()
 
         char read_buf[MAX_LINE] = ""; /* read buffer */
         recv(currfd, read_buf, MAX_LINE, 0);
-        // read(currfd, read_buf, MAX_LINE);
         debug("uid: %d\n", uid);
         debug("After getline a command line\n");
 
@@ -465,7 +446,6 @@ int npshell()
             /* strip the last space */
             command[strlen(command) - 1] = (command[strlen(command) - 1] == ' ') ? '\0' : command[strlen(command) - 1];
             debug("command: %s len: %ld\n", command, strlen(command));
-            // dprintf(stdiofd[1], "command: %s len: %ld\n", command, strlen(command));
 
             char* unused = "";
             char* tmp_read = strtok_r(read_buf, "\r\n", &unused);
