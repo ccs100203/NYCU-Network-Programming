@@ -192,7 +192,7 @@ int main(int argc, char **argv)
                             usr_pipe_arr[uid][i].isValid = false;
                             close(usr_pipe_arr[uid][i].pipefd[0]);
                             close(usr_pipe_arr[uid][i].pipefd[1]);
-                            memset(usr_pipe_arr[i][uid].cmd, 0, MAX_LINE);
+                            memset(usr_pipe_arr[uid][i].cmd, 0, MAX_LINE);
                         }
                     }
                     
