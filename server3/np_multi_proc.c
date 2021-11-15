@@ -68,6 +68,7 @@ void client_handler(int signum)
     if (signum == SIGUSR1) {
         printf("%s", broadcast_region->msg);
         fflush(stdout);
+        usleep(100);
     } /* open readside fd */
     else if (signum == SIGUSR2) {
         unsigned int i = __builtin_ffs(client_arr[uid].who_send_mask) - 1;
