@@ -1,0 +1,12 @@
+*.html
+*.sh
+.vscode
+*.txt
+
+*.cgi
+command/
+test_case/
+boost_asio_example/
+
+http_server
+console.cgi
