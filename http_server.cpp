@@ -5,11 +5,13 @@
 #include <boost/asio.hpp>
 #include <boost/algorithm/string.hpp>
 #include <map>
+#include <sys/wait.h>
 
 using boost::asio::ip::tcp;
 using namespace std;
 
 boost::asio::io_context io_context;
+boost::asio::signal_set signal_(io_context, SIGCHLD);
 
 class session
     : public enable_shared_from_this<session>
@@ -56,7 +58,7 @@ private:
 
                     /* the execution cgi */
                     string cgi_str = "";
-                    /* if find ?, then has query string */
+                    /* if find ?, then it has query string */
                     if (strs.at(1).find("?") != std::string::npos) {
                         vector<string> query_str;
                         boost::split(query_str, strs.at(1), boost::is_any_of("?"));
@@ -66,7 +68,7 @@ private:
                         envmap["QUERY_STRING"] = "";
                         cgi_str = strs.at(1);
                     }
-                        boost::replace_all(cgi_str, "/", "./");
+                    boost::replace_all(cgi_str, "/", "./");
 
                     // for (auto it: envmap) {
                     //     cout << it.first << " " << it.second << endl;
@@ -98,6 +100,7 @@ private:
                     {
                         // This is the parent process.
                         io_context.notify_fork(boost::asio::io_context::fork_parent);
+                        signal_.async_wait(handler);
 
                         socket_.close();
                     }
@@ -112,6 +115,17 @@ private:
         char msg[30] = "HTTP/1.1 200 OK\r\n";
         boost::asio::async_write(socket_, boost::asio::buffer(msg, strlen(msg)),
             [this, self](boost::system::error_code ec, size_t /*length*/){});
+    }
+
+    /* signal handler */
+    static void handler(const boost::system::error_code& error, int signal_number)
+    {
+        if (!error)
+        {
+            // A signal occurred.
+            // cout << "Signal: " << signal_number << endl;
+            while (waitpid(-1, NULL, WNOHANG) > 0);
+        }
     }
 
     tcp::socket socket_;
