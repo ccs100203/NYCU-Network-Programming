@@ -8,7 +8,6 @@
 #include <sys/wait.h>
 #include <fstream>
 
-
 using boost::asio::ip::tcp;
 using namespace std;
 
@@ -31,7 +30,6 @@ public:
     void start()
     {
         auto self(shared_from_this());
-        // Start the connect actor.
         tcp::resolver::query q(querymap.at("h"+to_string(hostId)), querymap.at("p"+to_string(hostId)));
         resolver_.async_resolve(q, [this, self](boost::system::error_code ec, tcp::resolver::iterator it)
         {
@@ -212,10 +210,10 @@ void output_init_html() {
 }
 
 
-/* parsing GET query string*/
+/* parsing GET query string */
 void parse_query()
 {
-    /* get query string from environment*/
+    /* get query string from environment */
     string query_str = getenv("QUERY_STRING");
         
     vector<string> strs;

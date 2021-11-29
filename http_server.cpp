@@ -70,16 +70,13 @@ private:
                     }
                     boost::replace_all(cgi_str, "/", "./");
 
-                    // for (auto it: envmap) {
-                    //     cout << it.first << " " << it.second << endl;
-                    // }
                     cout << cgi_str << endl;
 
                     /* fork */
                     io_context.notify_fork(boost::asio::io_context::fork_prepare);
                     if (fork() == 0)
                     {
-                        // This is the child process.
+                        /* This is the child process. */
                         io_context.notify_fork(boost::asio::io_context::fork_child);
                         for (auto it: envmap) {
                             setenv(it.first.c_str(), it.second.c_str(), 1);
@@ -87,7 +84,6 @@ private:
 
                         dup2(socket_.native_handle(), 0);
                         dup2(socket_.native_handle(), 1);
-                        // dup2(socket_.native_handle(), 2);
                         socket_.close();
 
                         char *exec_argv[2] = {strdup(cgi_str.c_str()), NULL};
@@ -98,7 +94,7 @@ private:
                     }
                     else
                     {
-                        // This is the parent process.
+                        /* This is the parent process. */
                         io_context.notify_fork(boost::asio::io_context::fork_parent);
                         signal_.async_wait(handler);
 
@@ -122,8 +118,7 @@ private:
     {
         if (!error)
         {
-            // A signal occurred.
-            // cout << "Signal: " << signal_number << endl;
+            /* A signal occurred. */
             while (waitpid(-1, NULL, WNOHANG) > 0);
         }
     }
@@ -140,7 +135,6 @@ public:
     server(short port)
     : acceptor_(io_context, tcp::endpoint(tcp::v4(), port))
     {
-        // acceptor_.set_option(boost::asio::socket_base::reuse_address(true));
         do_accept();
     }
 
@@ -171,8 +165,6 @@ int main(int argc, char* argv[])
             cerr << "Usage: async_tcp_echo_server <port>\n";
             return 1;
         }
-
-        // boost::asio::io_context io_context;
 
         server s(atoi(argv[1]));
 
