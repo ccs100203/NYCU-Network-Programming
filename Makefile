@@ -13,9 +13,9 @@ http_server: http_server.cpp
 	$(CXX) $^ -o $@ $(CXX_INCLUDE_PARAMS) $(CXX_LIB_PARAMS) $(CXXFLAGS)
 
 console: console.cpp
-	$(CXX) $(CFLAGS) -o console.cgi $^
+	$(CXX) $^ -o console.cgi $(CXX_INCLUDE_PARAMS) $(CXX_LIB_PARAMS) $(CXXFLAGS)
 
-check: http_server
+check: http_server console
 	./http_server 16795
 
 debug: CFLAGS += -D DEBUG
