@@ -12,11 +12,17 @@ using boost::asio::ip::tcp;
 using namespace std;
 
 boost::asio::io_context io_context;
+tcp::resolver::results_type::iterator socks_it;
 
 /* map for recording GET query string */
 std::map<string, string> querymap;
 /* number of np_single_golden */
 int host_number = 0;
+
+#define debug(msg) \
+    do {           \
+        cout << "<script>console.log(\"" << msg << "\")</script>" << flush;  \
+    } while (0)
 
 class client : public enable_shared_from_this<client>
 {
@@ -35,14 +41,15 @@ public:
         {
             if (!ec)
             {
-                boost::asio::ip::tcp::endpoint endpoint = *it;
-                socket_.async_connect(endpoint, [this, self](boost::system::error_code ec)
+                dst_endpoint = *it;
+                /* connect to socks server */
+                socket_.async_connect(socks_it->endpoint(), [this, self](boost::system::error_code ec)
                 {
                     if (!ec)
                     {
-                        do_read();
+                        do_socks_request();
                     } else {
-                        cerr << "CONNECT ERROR" << endl;
+                        debug(ec.message());
                     }
                 });
             }
@@ -51,6 +58,55 @@ public:
     }
 
 private:
+    void do_socks_request()
+    {
+        auto self(shared_from_this());
+        string req_msg = "";
+        req_msg += 4;
+        req_msg += 1;
+        req_msg += (dst_endpoint.port() & 0xff00) >> 8;
+        req_msg += dst_endpoint.port() & 0x00ff;
+        string ip = dst_endpoint.address().to_string();
+        vector<string> strs;
+        boost::split(strs, ip, boost::is_any_of("."));
+        for (auto it : strs) {
+            req_msg += std::stoi(it);
+        }
+        req_msg += '\0';
+        debug(req_msg);
+
+        boost::asio::async_write(socket_, boost::asio::buffer(req_msg, req_msg.length()),
+        [this, self](boost::system::error_code ec, std::size_t /*length*/)
+        {
+            if (!ec)
+            {
+                do_socks_reply();
+            } else {
+                debug(ec.message());
+            }
+        });
+    }
+
+    void do_socks_reply() {
+        auto self(shared_from_this());
+        memset(data_, 0, max_length);
+        socket_.async_read_some(boost::asio::buffer(data_, max_length),
+            [this, self](boost::system::error_code ec, size_t length)
+            {
+                if (!ec)
+                {
+                    /* Accept */
+                    if (data_[1] == 90) {
+                        memset(data_, 0, max_length);
+                        do_read();
+                    }
+                } else {
+                    debug(ec.message());
+                }
+            });
+    }
+
+
     void do_read()
     {
         auto self(shared_from_this());
@@ -70,7 +126,7 @@ private:
                     }
                     
                 } else {
-                    cerr << "READ: " << ec.message() << endl;
+                    debug(ec.message());
                 }
             });
 
@@ -84,7 +140,7 @@ private:
         getline(file_stream, command);
         command += "\n";
 
-        cerr << command << flush;
+        debug(command);
         output_command(session, command);
 
         boost::asio::async_write(socket_, boost::asio::buffer(command, command.length()),
@@ -94,7 +150,7 @@ private:
             {
                 do_read();
             } else {
-                cerr << "WRITE: " << ec.message() << endl;
+                debug(ec.message());
             }
         });
     }
@@ -133,6 +189,7 @@ private:
     char data_[max_length];
     std::ifstream file_stream;
     tcp::resolver resolver_;
+     boost::asio::ip::tcp::endpoint dst_endpoint;
     int hostId;
 };
 
@@ -209,20 +266,6 @@ void output_init_html() {
     cout << html << flush;
 }
 
-void debug_output(string content)
-{
-    string str = content;
-    boost::replace_all(str, "&", "&amp;");
-    boost::replace_all(str, "<", "&lt;");
-    boost::replace_all(str, ">", "&gt;");
-    boost::replace_all(str, "\'", "&#39;");
-    boost::replace_all(str, "\"", "&quot;");
-    boost::replace_all(str, "\n", "&NewLine;");
-    boost::replace_all(str, "\r", "");
-    string output = "<script>document.getElementById('s0').innerHTML += '<b>" + str + "</b>';</script>";
-    cout << output << flush;
-}
-
 /* parsing GET query string */
 void parse_query()
 {
@@ -248,7 +291,6 @@ void parse_query()
     host_number /= 3;
 }
 
-
 int main(int argc, char* argv[]) 
 {
     try
@@ -258,9 +300,10 @@ int main(int argc, char* argv[])
 
         parse_query();
         output_init_html();
-        
-        debug_output(querymap.at("sh"));
-        debug_output(querymap.at("sp"));
+
+        tcp::resolver r_sock(io_context);
+        tcp::resolver::results_type sock_endpoint = r_sock.resolve(querymap.at("sh"), querymap.at("sp"));
+        socks_it = sock_endpoint.begin();
         
         for (int i = 0; i < host_number; i++) {
             make_shared<client>("s"+to_string(i), querymap.at("f"+to_string(i)), i)->start();
@@ -270,7 +313,7 @@ int main(int argc, char* argv[])
     }
     catch (exception& e)
     {
-        cerr << "Exception: " << e.what() << "\n";
+        debug(e.what());
     }
     return 0;
 }
