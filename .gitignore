@@ -3,11 +3,13 @@
 .vscode
 *.txt
 
-*.cgi
+# *.cgi
 command/
 test_case/
 boost_asio_example/
 
-http_server
 console.cgi
-http_server.cpp
+hw4.cgi
+socks_server
+socks_server.cpp
+working_dir/

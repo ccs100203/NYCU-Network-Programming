@@ -209,6 +209,19 @@ void output_init_html() {
     cout << html << flush;
 }
 
+void debug_output(string content)
+{
+    string str = content;
+    boost::replace_all(str, "&", "&amp;");
+    boost::replace_all(str, "<", "&lt;");
+    boost::replace_all(str, ">", "&gt;");
+    boost::replace_all(str, "\'", "&#39;");
+    boost::replace_all(str, "\"", "&quot;");
+    boost::replace_all(str, "\n", "&NewLine;");
+    boost::replace_all(str, "\r", "");
+    string output = "<script>document.getElementById('s0').innerHTML += '<b>" + str + "</b>';</script>";
+    cout << output << flush;
+}
 
 /* parsing GET query string */
 void parse_query()
@@ -230,7 +243,8 @@ void parse_query()
             host_number++;
         }
     }
-
+    /* sh & sp */
+    host_number -= 2;
     host_number /= 3;
 }
 
@@ -244,6 +258,9 @@ int main(int argc, char* argv[])
 
         parse_query();
         output_init_html();
+        
+        debug_output(querymap.at("sh"));
+        debug_output(querymap.at("sp"));
         
         for (int i = 0; i < host_number; i++) {
             make_shared<client>("s"+to_string(i), querymap.at("f"+to_string(i)), i)->start();
