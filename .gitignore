@@ -11,5 +11,7 @@ boost_asio_example/
 console.cgi
 hw4.cgi
 socks_server
-socks_server.cpp
 working_dir/
+tmp*
+
+socks.conf

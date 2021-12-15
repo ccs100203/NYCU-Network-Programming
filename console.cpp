@@ -62,18 +62,18 @@ private:
     {
         auto self(shared_from_this());
         string req_msg = "";
-        req_msg += 4;
-        req_msg += 1;
-        req_msg += (dst_endpoint.port() & 0xff00) >> 8;
-        req_msg += dst_endpoint.port() & 0x00ff;
+        req_msg += (char) 4;
+        req_msg += (char) 1;
+        req_msg += (char) ((dst_endpoint.port() & 0xff00) >> 8);
+        req_msg += (char) (dst_endpoint.port() & 0x00ff);
         string ip = dst_endpoint.address().to_string();
         vector<string> strs;
         boost::split(strs, ip, boost::is_any_of("."));
         for (auto it : strs) {
-            req_msg += std::stoi(it);
+            req_msg += (char)(std::stoi(it) & 0xff);
         }
         req_msg += '\0';
-        debug(req_msg);
+        // debug(dst_endpoint.port());
 
         boost::asio::async_write(socket_, boost::asio::buffer(req_msg, req_msg.length()),
         [this, self](boost::system::error_code ec, std::size_t /*length*/)
@@ -82,12 +82,13 @@ private:
             {
                 do_socks_reply();
             } else {
-                debug(ec.message());
+                debug("do_socks_request: " + ec.message());
             }
         });
     }
 
     void do_socks_reply() {
+        // debug("do_socks_reply");
         auto self(shared_from_this());
         memset(data_, 0, max_length);
         socket_.async_read_some(boost::asio::buffer(data_, max_length),
@@ -95,13 +96,20 @@ private:
             {
                 if (!ec)
                 {
+                    debug("not ec");
                     /* Accept */
-                    if (data_[1] == 90) {
-                        memset(data_, 0, max_length);
+                    if ((data_[1] & 0xff) == 90) {
+                        debug("ACCEPT");
                         do_read();
                     }
+                } else if (ec.value() == 2) {
+                    debug("do_socks_reply EOF: " + ec.message());
+                    if(!flag) {
+                        flag = true;
+                        do_socks_reply();
+                    }
                 } else {
-                    debug(ec.message());
+                    debug("do_socks_reply: " + ec.message());
                 }
             });
     }
@@ -110,6 +118,7 @@ private:
     void do_read()
     {
         auto self(shared_from_this());
+        memset(data_, 0, max_length);
         socket_.async_read_some(boost::asio::buffer(data_, max_length),
             [this, self](boost::system::error_code ec, size_t length)
             {
@@ -126,7 +135,7 @@ private:
                     }
                     
                 } else {
-                    debug(ec.message());
+                    debug("do_read: " + ec.message());
                 }
             });
 
@@ -140,7 +149,7 @@ private:
         getline(file_stream, command);
         command += "\n";
 
-        debug(command);
+        // debug(command);
         output_command(session, command);
 
         boost::asio::async_write(socket_, boost::asio::buffer(command, command.length()),
@@ -150,7 +159,7 @@ private:
             {
                 do_read();
             } else {
-                debug(ec.message());
+                debug("do_write: " + ec.message());
             }
         });
     }
@@ -189,8 +198,9 @@ private:
     char data_[max_length];
     std::ifstream file_stream;
     tcp::resolver resolver_;
-     boost::asio::ip::tcp::endpoint dst_endpoint;
+    boost::asio::ip::tcp::endpoint dst_endpoint;
     int hostId;
+    bool flag = false;
 };
 
 /* setting html header & format */
