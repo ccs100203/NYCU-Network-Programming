@@ -13,11 +13,11 @@ socks_server: socks_server.cpp
 	$(CXX) $^ -o $@ $(CXX_INCLUDE_PARAMS) $(CXX_LIB_PARAMS) $(CXXFLAGS)
 
 console: console.cpp
-	# $(CXX) $^ -o hw4.cgi $(CXX_INCLUDE_PARAMS) $(CXX_LIB_PARAMS) $(CXXFLAGS)
+	$(CXX) $^ -o hw4.cgi $(CXX_INCLUDE_PARAMS) $(CXX_LIB_PARAMS) $(CXXFLAGS)
 	$(CXX) $^ -o ~/public_html/hw4.cgi $(CXX_INCLUDE_PARAMS) $(CXX_LIB_PARAMS) $(CXXFLAGS)
 
-# check: socks_server console
-# 	./socks_server 16795
+check: socks_server console
+	./socks_server 26891
 
 debug: CFLAGS += -D DEBUG
 debug: $(BINS)

@@ -9,8 +9,6 @@
 #include <boost/array.hpp>
 #include <regex>
 #include <fstream>
-#include <boost/regex.hpp>
-
 
 using boost::asio::ip::tcp;
 using namespace std;
@@ -47,15 +45,16 @@ private:
                     check_firewall();
                     print_server_msg();
                     if (packet_map.at("REPLY") == "Reject") {
-                        socks_reply("port");
+                        socks_reply(0);
+                        exit(EXIT_SUCCESS);
                     } /* connect mode */
                     else if (packet_map.at("CD") == "1") {
-                        socks_reply("port");
-                        cout << "goto connect" << endl;
+                        socks_reply(0);
                         do_connect();
                     } /* bind mode */
                     else {
-
+                        /* bind & listen */
+                        do_bind();
                     }
                 }
             });
@@ -70,13 +69,45 @@ private:
         packet_map["CD"] = to_string(data_[1]);
         packet_map["DST_PORT"] = to_string((data_[2] << 8 | (data_[3] & 0xff)) & 0xffff);
 
+        /* IP Address */
         string tmp = "";
         for (int i = 4; i < 7; ++i) {
             tmp += to_string(data_[i] & 0xff);
             tmp += ".";
         }
-        tmp += to_string(data_[7] & 0xff);
-        packet_map["DST_IP"] = tmp;
+        /* SOCKS 4A */
+        if (tmp == "0.0.0." && (data_[7] & 0xff) != 0) {
+            string domain_name = "";
+            int i, stage = 0;
+            for (i = 8; stage <= 1; ++i) {
+                switch (stage) {
+                    /* User ID */
+                    case 0:
+                        if (data_[i] == 0)
+                            stage = 1;
+                        break;
+                    /* Domain Name */
+                    case 1:
+                        if (data_[i] == 0)
+                            stage = 2;
+                        else
+                            domain_name += data_[i];
+                        break;
+                    default:
+                        cerr << "Unknown case" << endl;
+                        break;
+                }
+            }
+            tcp::resolver r(io_context);
+            tcp::resolver::results_type ep = r.resolve(domain_name, packet_map["DST_PORT"]);
+            packet_map["DST_IP"] = ep.begin()->endpoint().address().to_string();
+
+        } /* SOCKS 4 */
+        else {
+            /* fill up residual IP */
+            tmp += to_string(data_[7] & 0xff);
+            packet_map["DST_IP"] = tmp;
+        }
 
         packet_map["SRC_IP"] = socket_src.remote_endpoint().address().to_string();
         packet_map["SRC_PORT"] = to_string(socket_src.remote_endpoint().port());
@@ -118,25 +149,34 @@ private:
         cout << "<Reply>: " << packet_map.at("REPLY") << endl << endl;
     }
 
-    // TODO
-    void socks_reply(string port) {
+    void socks_reply(unsigned short port) {
         auto self(shared_from_this());
         string reply_msg = "";
         reply_msg += '\0';
         reply_msg += (packet_map.at("REPLY") == "Accept") ? 90 : 91;
+        /* port */
+        reply_msg += (port & 0xff00) >> 8;
+        reply_msg += (port & 0x00ff);
+        /* IP */
         /* Connect */
         if (packet_map.at("CD") == "1") {
-            reply_msg += "\0\0\0\0\0\0";
-        } /* bind */
+            reply_msg += '\0';
+            reply_msg += '\0';
+            reply_msg += '\0';
+            reply_msg += '\0';
+        } /* Bind */ // TODO
         else {
-
+            reply_msg += '\0';
+            reply_msg += '\0';
+            reply_msg += '\0';
+            reply_msg += '\0';
         }
         boost::asio::async_write(socket_src, boost::asio::buffer(reply_msg, reply_msg.length()),
         [this, self](boost::system::error_code ec, std::size_t /*length*/)
         {
             if (!ec)
             {
-                
+                /* do nothing */
             } else {
                 cerr << "socks_reply: " << ec.message() << endl;
             }
@@ -163,6 +203,25 @@ private:
         });
     }
 
+    void do_bind()
+    {
+        tcp::acceptor bind_acceptor(io_context);
+        tcp::endpoint bind_endpoint(tcp::v4(), 0);
+        bind_acceptor.open(bind_endpoint.protocol());
+        bind_acceptor.set_option(tcp::acceptor::reuse_address(true));
+        bind_acceptor.bind(bind_endpoint);
+        bind_acceptor.listen();
+        /* send socks_reply to client with port */
+        socks_reply(bind_acceptor.local_endpoint().port());
+        /* accept connection from destination */
+        bind_acceptor.accept(socket_dst);
+        /* send socks_reply to client with port */
+        socks_reply(bind_acceptor.local_endpoint().port());
+        /* Start relaying traffic on both directions */
+        do_read_from_src();
+        do_read_from_dst();
+    }
+
     void do_read_from_src()
     {
         auto self(shared_from_this());
@@ -172,13 +231,14 @@ private:
             {
                 if (!ec)
                 {
-                    string tmp = data_;
+                    string tmp(data_, length);
                     memset(data_, 0, max_length);
                     do_write_to_dst(tmp);
-                    
                 } /* EOF */
                 else if (ec.value() == 2) {
-                    cerr << "do_read_from_src: " << ec.message() << endl;
+                    socket_src.close();
+                    socket_dst.close();
+                    exit(EXIT_SUCCESS);
                 } else {
                     cerr << "do_read_from_src: " << ec.message() << endl;
                 }
@@ -194,15 +254,13 @@ private:
             {
                 if (!ec)
                 {
-                    string tmp = data_;
+                    string tmp(data_, length);
                     memset(data_, 0, max_length);
                     do_write_to_src(tmp);
-                    
                 } /* EOF */
                 else if (ec.value() == 2) {
-                    cerr << "do_read_from_dst: "  << ec.message() << endl;
-                    socket_dst.close();
                     socket_src.close();
+                    socket_dst.close();
                     exit(EXIT_SUCCESS);
                 } else {
                     cerr << "do_read_from_dst: "  << ec.message() << endl;
@@ -242,7 +300,7 @@ private:
 
     tcp::socket socket_src;
     tcp::socket socket_dst;
-    enum { max_length = 4096 };
+    enum { max_length = 1024 };
     char data_[max_length];
     std::map<string, string> packet_map;
 };
@@ -271,14 +329,12 @@ private:
                     /* This is the child process. */
                     io_context.notify_fork(boost::asio::io_context::fork_child);
                     acceptor_.close();
-                    // cout << "It's child" << endl;
                     make_shared<session>(move(socket))->start();
                 }
                 else
                 {
                     /* This is the parent process. */
                     io_context.notify_fork(boost::asio::io_context::fork_parent);
-                    // cout << "It's parent" << endl;
                     signal_.async_wait(handler);
                     socket.close();
                 }
@@ -312,7 +368,6 @@ int main(int argc, char* argv[])
         }
 
         server s(atoi(argv[1]));
-
         io_context.run();
     }
     catch (exception& e)

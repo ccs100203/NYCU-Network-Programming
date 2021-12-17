@@ -73,7 +73,6 @@ private:
             req_msg += (char)(std::stoi(it) & 0xff);
         }
         req_msg += '\0';
-        // debug(dst_endpoint.port());
 
         boost::asio::async_write(socket_, boost::asio::buffer(req_msg, req_msg.length()),
         [this, self](boost::system::error_code ec, std::size_t /*length*/)
@@ -88,7 +87,6 @@ private:
     }
 
     void do_socks_reply() {
-        // debug("do_socks_reply");
         auto self(shared_from_this());
         memset(data_, 0, max_length);
         socket_.async_read_some(boost::asio::buffer(data_, max_length),
@@ -96,11 +94,12 @@ private:
             {
                 if (!ec)
                 {
-                    debug("not ec");
                     /* Accept */
                     if ((data_[1] & 0xff) == 90) {
-                        debug("ACCEPT");
                         do_read();
+                    } /* Reject */
+                    else {
+                        /* do nothing */
                     }
                 } else if (ec.value() == 2) {
                     debug("do_socks_reply EOF: " + ec.message());
@@ -149,7 +148,6 @@ private:
         getline(file_stream, command);
         command += "\n";
 
-        // debug(command);
         output_command(session, command);
 
         boost::asio::async_write(socket_, boost::asio::buffer(command, command.length()),

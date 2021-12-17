@@ -3,15 +3,12 @@
 .vscode
 *.txt
 
-# *.cgi
 command/
 test_case/
 boost_asio_example/
+working_dir/
 
-console.cgi
 hw4.cgi
 socks_server
-working_dir/
-tmp*
 
-socks.conf
+# socks.conf
