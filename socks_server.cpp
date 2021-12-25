@@ -36,7 +36,7 @@ private:
     {
         auto self(shared_from_this());
         memset(data_, 0, max_length);
-        socket_src.async_read_some(boost::asio::buffer(data_, max_length),
+        socket_src.async_read_some(boost::asio::buffer(data_, max_length -1),
             [this, self](boost::system::error_code ec, size_t length)
             {
                 if (!ec) {
@@ -44,6 +44,7 @@ private:
                     parse_req();
                     check_firewall();
                     print_server_msg();
+                    // memset(data_, 0, max_length);
                     if (packet_map.at("REPLY") == "Reject") {
                         socks_reply(0);
                         exit(EXIT_SUCCESS);
@@ -63,6 +64,7 @@ private:
     /* parse socks4 request */
     void parse_req()
     {
+        auto self(shared_from_this());
         /* version */
         packet_map["VN"] = to_string(data_[0]);
         /* command */
@@ -205,6 +207,7 @@ private:
 
     void do_bind()
     {
+        auto self(shared_from_this());
         tcp::acceptor bind_acceptor(io_context);
         tcp::endpoint bind_endpoint(tcp::v4(), 0);
         bind_acceptor.open(bind_endpoint.protocol());
@@ -225,20 +228,22 @@ private:
     void do_read_from_src()
     {
         auto self(shared_from_this());
-        memset(data_, 0, max_length);
-        socket_src.async_read_some(boost::asio::buffer(data_, max_length),
+        // memset(data_, 0, max_length);
+        socket_src.async_read_some(boost::asio::buffer(data_, max_length -1),
             [this, self](boost::system::error_code ec, size_t length)
             {
                 if (!ec)
                 {
-                    string tmp(data_, length);
-                    memset(data_, 0, max_length);
-                    do_write_to_dst(tmp);
+                    string tmp((char*)data_, length);
+                    // memset(data_, 0, max_length);
+                    do_write_to_dst(tmp, length);
                 } /* EOF */
                 else if (ec.value() == 2) {
-                    socket_src.close();
-                    socket_dst.close();
-                    exit(EXIT_SUCCESS);
+                    boost::system::error_code ec2;
+                    socket_dst.shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec2);
+                    // socket_src.close();
+                    // socket_dst.close();
+                    // exit(EXIT_SUCCESS);
                 } else {
                     cerr << "do_read_from_src: " << ec.message() << endl;
                 }
@@ -248,45 +253,47 @@ private:
     void do_read_from_dst()
     {
         auto self(shared_from_this());
-        memset(data_, 0, max_length);
-        socket_dst.async_read_some(boost::asio::buffer(data_, max_length),
+        // memset(data_, 0, max_length);
+        socket_dst.async_read_some(boost::asio::buffer(data_, max_length -1),
             [this, self](boost::system::error_code ec, size_t length)
             {
                 if (!ec)
                 {
-                    string tmp(data_, length);
-                    memset(data_, 0, max_length);
-                    do_write_to_src(tmp);
+                    string tmp((char*)data_, length);
+                    // memset(data_, 0, max_length);
+                    do_write_to_src(tmp, length);
                 } /* EOF */
                 else if (ec.value() == 2) {
-                    socket_src.close();
-                    socket_dst.close();
-                    exit(EXIT_SUCCESS);
+                    boost::system::error_code ec2;
+                    socket_src.shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec2);
+                    // socket_src.close();
+                    // socket_dst.close();
+                    // exit(EXIT_SUCCESS);
                 } else {
                     cerr << "do_read_from_dst: "  << ec.message() << endl;
                 }
             });
     }
 
-    void do_write_to_src(string msg)
+    void do_write_to_src(string msg, size_t length)
     {
         auto self(shared_from_this());
-        boost::asio::async_write(socket_src, boost::asio::buffer(msg, msg.length()),
+        boost::asio::async_write(socket_src, boost::asio::buffer(msg, length),
         [this, self](boost::system::error_code ec, std::size_t /*length*/)
         {
             if (!ec)
             {
                 do_read_from_dst();
             } else {
-                cerr << "do_write_to_src: "  << ec.message() << endl;
+                cerr << "do_write_to_src: " << ec.message() << endl;
             }
         });
     }
 
-    void do_write_to_dst(string msg)
+    void do_write_to_dst(string msg, size_t length)
     {
         auto self(shared_from_this());
-        boost::asio::async_write(socket_dst, boost::asio::buffer(msg, msg.length()),
+        boost::asio::async_write(socket_dst, boost::asio::buffer(msg, length),
         [this, self](boost::system::error_code ec, std::size_t /*length*/)
         {
             if (!ec)
@@ -335,7 +342,7 @@ private:
                 {
                     /* This is the parent process. */
                     io_context.notify_fork(boost::asio::io_context::fork_parent);
-                    signal_.async_wait(handler);
+                    // signal_.async_wait(handler);
                     socket.close();
                 }
             }
