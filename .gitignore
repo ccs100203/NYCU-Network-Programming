@@ -1,0 +1,14 @@
+*.html
+*.sh
+.vscode
+*.txt
+
+command/
+test_case/
+boost_asio_example/
+working_dir/
+
+hw4.cgi
+socks_server
+
+# socks.conf
